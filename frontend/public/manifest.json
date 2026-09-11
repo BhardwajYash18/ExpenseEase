@@ -1,0 +1,19 @@
+{
+  "name": "ExpensEase: Smart Employee Expense Management Platform",
+  "short_name": "ExpensEase",
+  "description": "Smart Employee Expense Management Platform",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f172a",
+  "theme_color": "#1e293b",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

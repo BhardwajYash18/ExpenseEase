@@ -1,0 +1,71 @@
+services:
+  # Relational Database: PostgreSQL 16
+  # NOTE: PostgreSQL 16 is an implementation choice/assumption for local development.
+  postgres:
+    image: postgres:16-alpine
+    container_name: expensease_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-expensease_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-expensease_secure_password}
+      POSTGRES_DB: ${POSTGRES_DB:-expensease_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-expensease_user} -d ${POSTGRES_DB:-expensease_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Primary Backend: Node.js + Express
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: expensease_backend
+    restart: unless-stopped
+    environment:
+      PORT: ${BACKEND_PORT:-5000}
+      NODE_ENV: ${NODE_ENV:-development}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-expensease_db}
+      DB_USER: ${POSTGRES_USER:-expensease_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-expensease_secure_password}
+      AI_SERVICE_URL: http://ai-service:8000
+    ports:
+      - "${BACKEND_PORT:-5000}:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Dedicated AI Service: Python + FastAPI
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: expensease_ai_service
+    restart: unless-stopped
+    environment:
+      PORT: ${AI_SERVICE_PORT:-8000}
+      ENVIRONMENT: ${NODE_ENV:-development}
+    ports:
+      - "${AI_SERVICE_PORT:-8000}:8000"
+
+  # Frontend: React PWA
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: expensease_frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+    driver: local
