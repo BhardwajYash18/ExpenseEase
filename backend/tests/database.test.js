@@ -1,6 +1,6 @@
 const { checkConnection, pool } = require('../src/config/db');
 
-describe('Database Connectivity Verification (Checkpoint 0)', () => {
+describe('Database Connectivity and Foundational Schema', () => {
   afterAll(async () => {
     await pool.end();
   });
@@ -11,10 +11,22 @@ describe('Database Connectivity Verification (Checkpoint 0)', () => {
     expect(status.result).toEqual({ connected: 1 });
   });
 
-  it('should confirm that NO application tables exist in the public schema at Checkpoint 0', async () => {
+  it('should confirm foundational tables exist and no business tables are prematurely created', async () => {
     const res = await pool.query(
-      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name"
     );
-    expect(res.rows).toEqual([]);
+    const tableNames = res.rows.map((r) => r.table_name);
+
+    // Foundational tables must be present
+    expect(tableNames).toContain('schema_migrations');
+    expect(tableNames).toContain('tenants');
+    expect(tableNames).toContain('users');
+
+    // Strict scope check: No later-stage business tables must exist
+    expect(tableNames).not.toContain('expenses');
+    expect(tableNames).not.toContain('receipts');
+    expect(tableNames).not.toContain('approvals');
+    expect(tableNames).not.toContain('finance_batches');
+    expect(tableNames).not.toContain('journal_entries');
   });
 });
