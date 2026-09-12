@@ -106,8 +106,60 @@ Client Request (with secure tenant identity)
 3. **Deterministic SQL Migrations**:
    Managed via a lightweight, deterministic runner (`database/migrator.js`) using a dedicated `schema_migrations` catalog table to guarantee idempotency and linear ordering.
 
-### 6. Intentionally Deferred to Checkpoint 2
-- User authentication workflows (password hashing/verification, login, logout).
-- Session and JWT token generation/verification.
-- Backend RBAC authorization middleware (restricting routes based on `EMPLOYEE`, `MANAGER`, `FINANCE`).
-- Tenant resolution middleware from authenticated request tokens.
+### 6. Verification
+- Verified cross-tenant isolation where tenant context is established with `withTenantContext(tenantId)`.
+- Verified RLS blocks cross-tenant access and unauthorized inserts/reads/updates.
+
+---
+
+## Authentication & Role-Based Access Control (Checkpoint 2)
+
+### 1. Password Hashing
+- ExpensEase uses **bcrypt** (`bcryptjs`) with a cost factor of `saltRounds = 12`.
+- Every password hash incorporates a cryptographically secure, unique per-hash salt.
+- Plaintext passwords and `password_hash` values are never returned by API endpoints or written to application logs.
+
+### 2. JWT Strategy & Algorithm Pinning
+- **Signed Tokens**: JWTs are signed with the `HS256` HMAC algorithm using a server-side secret loaded from the `JWT_SECRET` environment variable.
+- **Fail-Fast Secret Requirement**: The application explicitly validates `JWT_SECRET` at startup and terminates immediately if it is absent or empty. No default fallback secret is permitted in production environments.
+- **Strict Algorithm Pinning**: Token verification explicitly specifies `{ algorithms: ['HS256'] }`, strictly preventing algorithm confusion or downgrade attacks (e.g. `none` algorithm).
+- **Minimal Claims Payload**:
+  - `sub`: User ID (UUID)
+  - `tid`: Tenant ID (UUID)
+  - `role`: User role (`EMPLOYEE`, `MANAGER`, `FINANCE`)
+  - `iat`, `exp`: Issued-at and expiration timestamps (configured via `JWT_EXPIRES_IN`, default 24h)
+- No user credentials, password hashes, or extraneous PII are placed in the JWT.
+
+### 3. Pre-Authentication Tenant Lookup Security Rationale
+- **Tenant Isolation Context**: In ExpensEase, user email uniqueness is tenant-scoped (`UNIQUE(tenant_id, email)`). Multiple independent tenants may legitimately employ users with identical emails (e.g. `admin@company.com`).
+- **Scoped Pre-Auth Query**: To resolve which tenant space the user belongs to, the login endpoint accepts `{ email, password, slug }`.
+- **Why Pre-Auth Access is Permitted & Safe**:
+  - The `tenants` table contains corporate entity metadata (`id`, `name`, `slug`, `status`), not tenant business or expense records.
+  - Pre-auth resolution calls `lookupTenantBySlug(slug)` which strictly queries `SELECT id, status FROM tenants WHERE slug = $1`. It retrieves only identity metadata.
+  - The tenant lookup does NOT access the `users` table or any business tables, and runs outside `withTenantContext`.
+- **RLS Boundary Preserved**:
+  - The actual user authentication query (`SELECT id, email, password_hash, role, status...`) is executed strictly within `withTenantContext(tenant.id, ...)` under the unprivileged `expensease_app` role with PostgreSQL Row-Level Security active.
+  - RLS cannot be bypassed during authentication; non-existent users, wrong passwords, or inactive accounts yield identical generic `401 Invalid credentials` responses to prevent user or tenant enumeration.
+
+### 4. Authentication Middleware (`authenticate.js`)
+- Inspects the incoming `Authorization: Bearer <token>` header.
+- Verifies the signature, expiration, algorithm, and presence/types of required claims (`sub`, `tid`, `role`).
+- Sets `req.user = { id: decoded.sub, tenantId: decoded.tid, role: decoded.role }`.
+- **Identity Isolation**: `req.user.tenantId` and `req.user.role` are derived exclusively from the cryptographically verified JWT. Any client-supplied `tenant_id`, `user_id`, or `role` in request bodies, query strings, or URL parameters is ignored.
+
+### 5. RBAC Authorization Middleware (`requireRole.js`)
+- Factory function `requireRole(...roles)` checking `req.user.role` against authorized roles (`EMPLOYEE`, `MANAGER`, `FINANCE`).
+- Returns `401 Unauthorized` if authentication has not occurred, and `403 Forbidden` if the authenticated role is insufficient.
+
+### 6. Production Token Storage Decision
+- **Status: Explicitly Deferred**.
+- For API testing in Checkpoint 2, the backend returns `{ token, user }` in the login JSON response.
+- The production PWA token storage strategy (e.g., `httpOnly` secure cookies with CSRF defense vs. in-memory access tokens with refresh token rotation) is explicitly deferred to be decided prior to frontend authentication implementation in subsequent checkpoints.
+- No `localStorage` or client-side storage assumptions are made as an implicit default.
+
+### 7. Intentionally Deferred to Checkpoint 3
+- Receipt capture and upload flows (file selection and camera capture).
+- Receipt file validation, MIME type checks, and size limits.
+- Image preprocessing (OpenCV / Pillow in AI service).
+- OCR extraction orchestration (Tesseract).
+- Storage and preservation of original receipt artifacts.
