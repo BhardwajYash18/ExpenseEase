@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.health import router as health_router
+from app.api.ocr import router as ocr_router
 from app.core.config import settings
 
 app = FastAPI(
@@ -20,6 +21,8 @@ app.add_middleware(
 
 # Mount health routes (GET /health)
 app.include_router(health_router)
+# Mount OCR routes (POST /ocr/extract)
+app.include_router(ocr_router)
 
 if __name__ == "__main__":
     import uvicorn

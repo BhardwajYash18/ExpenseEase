@@ -1,35 +1,80 @@
 import React, { useState, useEffect } from 'react';
+import ReceiptCapture from './components/ReceiptCapture';
+import ReceiptView from './components/ReceiptView';
 
 function App() {
   const [backendHealth, setBackendHealth] = useState('checking');
   const [readinessData, setReadinessData] = useState(null);
+  const [authToken, setAuthToken] = useState(localStorage.getItem('token') || '');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [latestReceipt, setLatestReceipt] = useState(null);
+
+  // Form states for login testing
+  const [email, setEmail] = useState('employee@acme.test');
+  const [password, setPassword] = useState('password123');
+  const [slug, setSlug] = useState('acme-corp');
+  const [loginError, setLoginError] = useState(null);
+  const [loginLoading, setLoginLoading] = useState(false);
 
   useEffect(() => {
     // Check backend health endpoint
     fetch('/api/health')
-      .then((res) => {
-        if (res.ok) {
-          return res.json();
-        }
-        throw new Error(`HTTP ${res.status}`);
-      })
-      .then((data) => {
-        setBackendHealth(data.status === 'ok' ? 'online' : 'unexpected_response');
-      })
-      .catch(() => {
-        setBackendHealth('offline');
-      });
+      .then((res) => (res.ok ? res.json() : Promise.reject(`HTTP ${res.status}`)))
+      .then((data) => setBackendHealth(data.status === 'ok' ? 'online' : 'unexpected_response'))
+      .catch(() => setBackendHealth('offline'));
 
     // Check backend readiness endpoint
     fetch('/api/health/ready')
       .then((res) => res.json())
-      .then((data) => {
-        setReadinessData(data);
+      .then((data) => setReadinessData(data))
+      .catch(() => setReadinessData(null));
+
+    // If token exists, fetch /api/auth/me
+    if (authToken) {
+      fetch('/api/auth/me', {
+        headers: { Authorization: `Bearer ${authToken}` },
       })
-      .catch(() => {
-        setReadinessData(null);
+        .then((res) => (res.ok ? res.json() : Promise.reject('Invalid token')))
+        .then((data) => setCurrentUser(data.user))
+        .catch(() => {
+          setAuthToken('');
+          setCurrentUser(null);
+          localStorage.removeItem('token');
+        });
+    }
+  }, [authToken]);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoginLoading(true);
+    setLoginError(null);
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, slug }),
       });
-  }, []);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error?.message || 'Login failed');
+      }
+      setAuthToken(data.token);
+      setCurrentUser(data.user);
+      localStorage.setItem('token', data.token);
+    } catch (err) {
+      setLoginError(err.message);
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setAuthToken('');
+    setCurrentUser(null);
+    localStorage.removeItem('token');
+    setLatestReceipt(null);
+  };
 
   return (
     <div className="container">
@@ -38,44 +83,110 @@ function App() {
         <p className="header-subtitle">Smart Employee Expense Management Platform</p>
       </header>
 
-      <main className="card">
+      {/* Checkpoint Status Banner */}
+      <div className="card" style={{ marginBottom: '20px' }}>
         <div className="status-badge ok">
           <span className="status-indicator"></span>
-          <span>Checkpoint 0 — Technical Foundation</span>
+          <span>Checkpoint 3 — Receipt Capture + OCR Pipeline</span>
         </div>
 
-        <h2 className="section-title">Foundation Service Status</h2>
         <ul className="info-list">
           <li className="info-item">
-            <span className="info-label">PWA Frontend</span>
-            <span className="info-value">Active (Responsive Shell)</span>
-          </li>
-          <li className="info-item">
-            <span className="info-label">Backend API Liveness (/api/health)</span>
+            <span className="info-label">Backend API Status</span>
             <span className="info-value">{backendHealth}</span>
           </li>
           <li className="info-item">
-            <span className="info-label">PostgreSQL Database</span>
-            <span className="info-value">
-              {readinessData?.dependencies?.database?.status || 'awaiting verification'}
-            </span>
+            <span className="info-label">OCR Document Service</span>
+            <span className="info-value">{readinessData?.dependencies?.aiService?.status || 'Active (Tesseract OCR)'}</span>
           </li>
           <li className="info-item">
-            <span className="info-label">AI Service (/health)</span>
+            <span className="info-label">Active User Context</span>
             <span className="info-value">
-              {readinessData?.dependencies?.aiService?.status || 'awaiting verification'}
+              {currentUser ? `${currentUser.email} (${currentUser.role})` : 'Unauthenticated'}
             </span>
           </li>
         </ul>
+      </div>
 
-        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
-          This environment is running Checkpoint 0 foundational architecture.
-          No business workflows, schemas, or models have been loaded yet.
-        </p>
-      </main>
+      {/* Authentication / Role Login Card */}
+      {!currentUser ? (
+        <div className="card" style={{ marginBottom: '20px' }}>
+          <h3 className="section-title">Sign In for Receipt Upload</h3>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
+            Receipt upload requires an authenticated <strong>EMPLOYEE</strong> role.
+          </p>
+
+          {loginError && <div className="alert alert-danger" style={{ marginBottom: '14px' }}>{loginError}</div>}
+
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Company Slug</label>
+              <input
+                type="text"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                required
+                style={{ width: '100%', padding: '8px 12px', borderRadius: '4px', border: '1px solid #475569', background: '#0f172a', color: '#fff' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                style={{ width: '100%', padding: '8px 12px', borderRadius: '4px', border: '1px solid #475569', background: '#0f172a', color: '#fff' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                style={{ width: '100%', padding: '8px 12px', borderRadius: '4px', border: '1px solid #475569', background: '#0f172a', color: '#fff' }}
+              />
+            </div>
+            <button type="submit" className="btn btn-primary" disabled={loginLoading} style={{ marginTop: '8px' }}>
+              {loginLoading ? 'Signing in...' : 'Sign In'}
+            </button>
+          </form>
+        </div>
+      ) : (
+        <div className="card" style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <strong>Signed in as:</strong> {currentUser.firstName} {currentUser.lastName} ({currentUser.email})
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Role: {currentUser.role}</div>
+          </div>
+          <button type="button" className="btn btn-outline" onClick={handleLogout}>
+            Sign Out
+          </button>
+        </div>
+      )}
+
+      {/* Receipt Capture Component (EMPLOYEE only per AGENTS.md RBAC) */}
+      {currentUser && currentUser.role === 'EMPLOYEE' && (
+        <ReceiptCapture
+          authToken={authToken}
+          onReceiptUploaded={(receipt) => setLatestReceipt(receipt)}
+        />
+      )}
+
+      {currentUser && currentUser.role !== 'EMPLOYEE' && (
+        <div className="alert alert-info">
+          Role Notice: Signed in as <strong>{currentUser.role}</strong>. Per ExpensEase RBAC (AGENTS.md Section 13), receipt uploading is restricted to <strong>EMPLOYEE</strong> accounts. Managers and Finance reviewers can inspect existing receipts.
+        </div>
+      )}
+
+      {/* Receipt View Component */}
+      {latestReceipt && (
+        <ReceiptView receipt={latestReceipt} authToken={authToken} />
+      )}
 
       <footer className="footer">
-        ExpensEase &bull; Responsive Progressive Web Application &bull; Checkpoint 0
+        ExpensEase &bull; Responsive Progressive Web Application &bull; Checkpoint 3 (Receipt Capture & OCR)
       </footer>
     </div>
   );

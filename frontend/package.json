@@ -5,7 +5,10 @@
   "type": "module",
   "description": "ExpensEase Responsive Progressive Web Application (PWA)",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently -k -p \"[{name}]\" -n \"frontend,backend,ai\" -c \"cyan.bold,blue.bold,magenta.bold\" \"npm run dev:frontend\" \"npm run dev:backend\" \"npm run dev:ai\"",
+    "dev:frontend": "vite",
+    "dev:backend": "npm --prefix ../backend run dev",
+    "dev:ai": "node scripts/start-ai.cjs",
     "build": "vite build",
     "preview": "vite preview"
   },
@@ -15,6 +18,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^10.0.5",
     "vite": "^5.4.14"
   }
 }

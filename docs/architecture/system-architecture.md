@@ -157,9 +157,59 @@ Client Request (with secure tenant identity)
 - The production PWA token storage strategy (e.g., `httpOnly` secure cookies with CSRF defense vs. in-memory access tokens with refresh token rotation) is explicitly deferred to be decided prior to frontend authentication implementation in subsequent checkpoints.
 - No `localStorage` or client-side storage assumptions are made as an implicit default.
 
-### 7. Intentionally Deferred to Checkpoint 3
-- Receipt capture and upload flows (file selection and camera capture).
-- Receipt file validation, MIME type checks, and size limits.
-- Image preprocessing (OpenCV / Pillow in AI service).
-- OCR extraction orchestration (Tesseract).
-- Storage and preservation of original receipt artifacts.
+---
+
+## Receipt Capture & OCR Pipeline (Checkpoint 3)
+
+### 1. Storage Architecture & Path Traversal Prevention
+- **Storage Service Abstraction (`storageService.js`)**: Encapsulates file persistence behind a clean interface (`generateStorageKey`, `storeFile`, `readFile`, `deleteFile`), allowing seamless transition to object storage in future deployments.
+- **Server-Controlled File Paths**: Files are stored under server-controlled paths: `{storageDir}/{tenantId}/{uuid}.{ext}`.
+- **Path Traversal Prevention**: Original filenames are never used in filesystem paths. Original filenames are sanitized (stripping `..`, `/`, `\`, control chars) and stored solely as database metadata (`original_filename`).
+- **Opaque Storage Keys**: Storage keys are generated server-side using cryptographically secure UUIDv4 identifiers.
+
+### 2. File Validation & Magic Byte Verification (`fileValidation.js`)
+- **Content Validation**: File validation does not rely solely on client-provided `Content-Type` headers or file extensions.
+- **Magic Bytes Verification**:
+  - `image/jpeg`: Checks for JFIF/EXIF header `FF D8 FF`.
+  - `image/png`: Checks for PNG signature `89 50 4E 47 0D 0A 1A 0A`.
+  - `image/webp`: Checks for RIFF header `52 49 46 46` and `WEBP` chunk marker at offset 8.
+- **Rejection of Spoofed Files**: Files with spoofed MIME types (e.g. text or executable disguised with a `.png` extension) are rejected with `400 Bad Request`.
+- **Size Limits**: Configurable file size limits (default: 10 MB, enforced at both multer middleware and service layers).
+
+### 3. PDF Deferral Rationale
+- Supported formats for Checkpoint 3 are restricted to standard images: `image/jpeg`, `image/png`, and `image/webp`.
+- PDF processing (`application/pdf`) requires dedicated rendering runtimes (Poppler/Ghostscript) to rasterize PDF pages prior to OCR. To prevent introducing complex external system dependencies and maintain determinism in Checkpoint 3, PDF uploads are explicitly deferred and rejected deterministically with an `UNSUPPORTED_FORMAT` error.
+
+### 4. Deterministic Preprocessing & OCR Service (FastAPI)
+- **Deterministic Pipeline**: The Python service acts strictly as a deterministic image processing and OCR extraction service (`Pillow`, `OpenCV`, `Tesseract`).
+- **NO AI/LLM/VLM**: Zero LLM SDKs, zero vision-language models, zero embeddings, and zero AI categorization are used in Checkpoint 3.
+- **Image Preprocessing (`image_preprocessor.py`)**:
+  - EXIF orientation auto-rotation (`ImageOps.exif_transpose`).
+  - Grayscale conversion.
+  - CLAHE (Contrast Limited Adaptive Histogram Equalization) for uneven receipt lighting.
+  - Gaussian blur and Otsu adaptive thresholding for binarization.
+  - Safe fallback to Pillow-only processing if OpenCV is unavailable.
+- **Tesseract OCR Extraction (`ocr_service.py`)**:
+  - Tesseract configured with Page Segmentation Mode 6 (`--psm 6`).
+  - Returns raw text string and extraction status.
+  - **Untrusted Output Principle**: OCR text is stored strictly as untrusted raw text; original files are preserved intact and never overwritten.
+
+### 5. Strict Role Scope (RBAC) Enforcement
+Per [AGENTS.md](file:///d:/Codes/College/ExpenseEase/AGENTS.md) Section 13:
+- **`POST /api/receipts/upload`**: Restricted strictly to the **`EMPLOYEE`** role (`requireRole('EMPLOYEE')`). Receipts are submitted by employees. Managers and Finance roles cannot upload receipts through this endpoint.
+- **`GET /api/receipts/:id` & `GET /api/receipts/:id/file`**:
+  - `EMPLOYEE`: Access restricted strictly to **their own** receipts (`receipt.user_id === req.user.id`).
+  - `MANAGER`: Can view supporting receipts within their authenticated tenant (`receipt.tenant_id === req.user.tenantId`) for approval review.
+  - `FINANCE`: Can view supporting receipts within their authenticated tenant for audit/batching review.
+  - All access is strictly constrained by tenant isolation and PostgreSQL RLS.
+
+### 6. Multi-Tenancy & Row-Level Security
+- Migration `003_create_receipts.sql` enables and forces PostgreSQL RLS on the `receipts` table.
+- Enforces `tenant_isolation_policy` matching the pattern established in Checkpoint 1.
+- All database operations are executed under the unprivileged `expensease_app` role inside `withTenantContext(tenantId)`.
+
+### 7. Intentionally Deferred to Checkpoint 4
+- AI/VLM receipt understanding and reasoning.
+- Structured receipt field extraction (merchant, transaction date, amount, taxes, line items).
+- Semantic expense categorization assistance.
+- Confidence scoring and review flags.

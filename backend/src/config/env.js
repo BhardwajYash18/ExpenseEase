@@ -26,6 +26,14 @@ const config = {
     jwtSecret: process.env.JWT_SECRET,
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || '24h',
   },
+  receipt: {
+    // Maximum receipt file size in bytes (configurable via environment; default 10 MB)
+    maxFileSizeBytes: parseInt(process.env.MAX_RECEIPT_FILE_SIZE_MB || '10', 10) * 1024 * 1024,
+    // Allowed MIME types for receipt uploads (JPEG, PNG, WebP — PDF deferred per CP3 scope)
+    allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+    // Local storage directory for uploaded receipts (not publicly served)
+    storageDir: process.env.RECEIPT_STORAGE_DIR || path.join(__dirname, '..', '..', 'storage', 'receipts'),
+  },
 };
 
 module.exports = config;
