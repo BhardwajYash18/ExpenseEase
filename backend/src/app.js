@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const healthRoutes = require('./routes/health');
 const authRoutes = require('./routes/auth');
 const receiptRoutes = require('./routes/receipts');
+const financeBatchRoutes = require('./routes/financeBatches');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -17,6 +18,7 @@ app.use(express.json());
 app.use('/api', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/receipts', receiptRoutes);
+app.use('/api/finance-batches', financeBatchRoutes);
 
 // 404 handler for unrecognized routes
 app.use((req, res, next) => {

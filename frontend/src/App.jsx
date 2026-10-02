@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ReceiptCapture from './components/ReceiptCapture';
 import ReceiptView from './components/ReceiptView';
+import FinanceBatchView from './components/FinanceBatchView';
 
 function App() {
   const [backendHealth, setBackendHealth] = useState('checking');
@@ -114,7 +115,7 @@ function App() {
       <div className="card" style={{ marginBottom: '20px' }}>
         <div className="status-badge ok">
           <span className="status-indicator"></span>
-          <span>Checkpoint 6 — Approval Workflow</span>
+          <span>Checkpoint 7 — Finance Batches</span>
         </div>
 
         <ul className="info-list">
@@ -193,6 +194,11 @@ function App() {
         </div>
       )}
 
+      {/* Finance Batches Management Section (FINANCE role per AGENTS.md Section 13/14) */}
+      {currentUser && currentUser.role === 'FINANCE' && (
+        <FinanceBatchView authToken={authToken} currentUser={currentUser} />
+      )}
+
       {/* Receipt Capture Component (EMPLOYEE only per AGENTS.md RBAC) */}
       {currentUser && currentUser.role === 'EMPLOYEE' && (
         <ReceiptCapture
@@ -206,7 +212,7 @@ function App() {
 
       {currentUser && currentUser.role !== 'EMPLOYEE' && (
         <div className="alert alert-info" style={{ marginBottom: '20px' }}>
-          Role Notice: Signed in as <strong>{currentUser.role}</strong>. Per ExpensEase RBAC (AGENTS.md Section 13), receipt uploading is restricted to <strong>EMPLOYEE</strong> accounts. Managers and Finance reviewers can inspect existing receipts and perform approval/queue actions below.
+          Role Notice: Signed in as <strong>{currentUser.role}</strong>. Per ExpensEase RBAC (AGENTS.md Section 13), receipt uploading is restricted to <strong>EMPLOYEE</strong> accounts. Managers and Finance reviewers can inspect existing receipts and perform approval/batching actions below.
         </div>
       )}
 
@@ -258,7 +264,7 @@ function App() {
       )}
 
       <footer className="footer">
-        ExpensEase &bull; Responsive Progressive Web Application &bull; Checkpoint 6 (Approval Workflow)
+        ExpensEase &bull; Responsive Progressive Web Application &bull; Checkpoint 7 (Finance Batches)
       </footer>
     </div>
   );

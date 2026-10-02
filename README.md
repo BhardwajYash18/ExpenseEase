@@ -2,11 +2,11 @@
 
 ExpensEase is a B2B expense-management platform for small and mid-sized businesses (SMBs). The application is delivered as a single responsive Progressive Web Application (PWA) for desktop and mobile browsers, backed by a Node.js API orchestrator, a dedicated Python document processing service, and PostgreSQL.
 
-> **Current Status**: `CHECKPOINT 6 — APPROVAL WORKFLOW COMPLETED`
+> **Current Status**: `CHECKPOINT 7 — FINANCE BATCHES COMPLETED`
 >
-> Checkpoints 0, 1, 2, 3, 4, 5, and 6 are fully implemented, verified, and tested. The project foundation, deterministic database migrations, PostgreSQL Row-Level Security (RLS) multi-tenancy model, bcrypt password hashing, HS256-pinned JWT authentication, strict RBAC authorization, receipt capture & Tesseract OCR pipeline, AI receipt understanding with provider abstraction, immutable dual-field provenance, deterministic effective values, deterministic policy engine, decimal-safe monetary arithmetic, multi-signal tenant-scoped duplicate detection, server-enforced approval workflow state machine (`DRAFT`, `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, `CORRECTION_REQUESTED`), manager decisions with mandatory reasons, separation of duties, pessimistic concurrency control, append-only audit trail, and PWA approval interface are complete.
+> Checkpoints 0, 1, 2, 3, 4, 5, 6, and 7 are fully implemented, verified, and tested. The project foundation, deterministic database migrations, PostgreSQL Row-Level Security (RLS) multi-tenancy model, bcrypt password hashing, HS256-pinned JWT authentication, strict RBAC authorization, receipt capture & Tesseract OCR pipeline, AI receipt understanding with provider abstraction, immutable dual-field provenance, deterministic effective values, deterministic policy engine, decimal-safe monetary arithmetic, multi-signal tenant-scoped duplicate detection, server-enforced approval workflow state machine (`DRAFT`, `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, `CORRECTION_REQUESTED`), manager decisions with mandatory reasons, separation of duties, pessimistic concurrency control, append-only workflow audit trail, atomic all-or-nothing Finance Batch creation, deterministic integer-cents batch totals, batch status management (`OPEN`, `REVIEWED`), expense addition/removal (leaving approval state intact), finance review completion, append-only finance audit trail, and dedicated PWA Finance Batch management interface are complete.
 >
-> In accordance with `AGENTS.md`, later-stage accounting workflows (Finance Batches in CP7, Journal Entries in CP8, and CSV/QuickBooks/Xero in CP9) are intentionally deferred to subsequent checkpoints.
+> In accordance with `AGENTS.md`, later-stage accounting workflows (Journal Entries in CP8, and CSV/QuickBooks/Xero in CP9) are intentionally deferred to subsequent checkpoints.
 
 ---
 
@@ -191,6 +191,41 @@ ExpensEase utilizes a **four-service application architecture**:
   - Complete, chronological audit trail timeline showing who, what, when, and reasons.
   - Reviewer workspace switcher in `App.jsx` allowing Managers and Finance to easily browse and review tenant receipts.
   - Clear guidance for Finance users that approved expenses are ready for CP7 Finance Batches.
+
+### Checkpoint 7 — Finance Batches
+- [x] Applied deterministic SQL migration `007_create_finance_batches.sql`:
+  - `finance_batches` table (UUID PK `id`, `tenant_id` FK, `created_by` FK, `status` with strict `CHECK (status IN ('OPEN', 'REVIEWED'))`, `total_amount NUMERIC(12, 2)`, `expense_count INTEGER`, `reviewed_by` FK, `reviewed_at`, timestamps). Identified solely by UUID `id`; no `batch_name` or `notes` fields.
+  - `finance_batch_items` table (UUID PK, `batch_id` FK, `receipt_id` FK, `tenant_id` FK, `amount NUMERIC(12, 2)`, timestamps, `CONSTRAINT uq_batch_receipt UNIQUE (batch_id, receipt_id)`).
+  - `finance_batch_actions` table for append-only audit trail (UUID PK, `batch_id` FK, `tenant_id` FK, `actor_id` FK, `actor_role`, `action` with strict `CHECK (action IN ('CREATE', 'ADD_ITEM', 'REMOVE_ITEM', 'REVIEW'))`, `affected_receipt_id`, `details`, `created_at`).
+  - Forced PostgreSQL RLS with `tenant_isolation_policy` on all three tables using `app.current_tenant_id`.
+  - Granted least-privilege permissions to `expensease_app`: CRUD on `finance_batches` & `finance_batch_items`; append-only `SELECT, INSERT` on `finance_batch_actions`.
+- [x] Implemented robust Finance Batch service (`backend/src/services/financeBatchService.js`):
+  - Strict eligibility: Only receipts with `expense_workflows.current_state = 'APPROVED'` are eligible to enter a batch (PRD FR-09.2, AGENTS.md Sec 14).
+  - Duplicate prevention within batch: Enforces `UNIQUE(batch_id, receipt_id)`. The same expense must not be included multiple times within the same Finance Batch. No cross-batch exclusivity rule is enforced across the tenant.
+  - Transactional creation semantics: Finance Batch creation is transactional. If the submitted request is invalid (e.g. contains unapproved, cross-tenant, or duplicate items), the transaction rolls back rather than leaving a partially created batch (API and data-integrity behavior, not an authoritative business requirement).
+  - Deterministic arithmetic: Batch total is summed via integer cents using `decimalUtils` without floating-point hazards.
+  - Batch status representation: A batch status is required; the exact literals `OPEN` (batch created / open for Finance review) and `REVIEWED` (finance review completed) are implementation representations of the lifecycle, not literal requirements from AGENTS.md/PRD.md. No other statuses exist.
+  - Expense removal: Removing an expense from an `OPEN` batch leaves the expense strictly in `APPROVED` workflow state and recalculates batch totals deterministically.
+  - Batch review locking: Once `REVIEWED`, further additions and removals are rejected.
+  - Audit logging: Every action (`CREATE`, `ADD_ITEM`, `REMOVE_ITEM`, `REVIEW`) persists an immutable record in `finance_batch_actions`.
+- [x] Mounted Finance Batch API routes (`backend/src/routes/financeBatches.js` & `backend/src/controllers/financeBatchController.js`):
+  - `GET /api/finance-batches/eligible-expenses`
+  - `GET /api/finance-batches`
+  - `POST /api/finance-batches`
+  - `GET /api/finance-batches/:id`
+  - `POST /api/finance-batches/:id/items`
+  - `DELETE /api/finance-batches/:id/items/:receiptId`
+  - `POST /api/finance-batches/:id/review`
+  - Strict server-side RBAC: restricted exclusively to `FINANCE` role (`EMPLOYEE` and `MANAGER` receive 403 Forbidden).
+- [x] Enhanced React PWA interface (`FinanceBatchView.jsx`, `App.jsx`):
+  - Dedicated Finance Batches view for `FINANCE` users.
+  - Batches identified clearly by UUID ID.
+  - Interactive approved expense selection table with live total calculator for batch creation.
+  - Batch details inspector with status badges, included items table, and action bar.
+  - "Add Expense" and "Remove Expense" controls for `OPEN` batches.
+  - "Complete Finance Review" action for `OPEN` batches.
+  - Chronological audit trail timeline displaying actor, role, action, and timestamp.
+
 
 ---
 
