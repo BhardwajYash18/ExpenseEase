@@ -17,15 +17,18 @@ describe('Database Connectivity and Foundational Schema', () => {
     );
     const tableNames = res.rows.map((r) => r.table_name);
 
-    // Foundational & Checkpoint 3 + 4 tables must be present
+    // Foundational & Checkpoint 3 + 4 + 5 tables must be present
     expect(tableNames).toContain('schema_migrations');
     expect(tableNames).toContain('tenants');
     expect(tableNames).toContain('users');
     expect(tableNames).toContain('receipts');
     expect(tableNames).toContain('receipt_extractions');
     expect(tableNames).toContain('receipt_line_items');
+    expect(tableNames).toContain('tenant_policies');
+    expect(tableNames).toContain('receipt_validation_results');
+    expect(tableNames).toContain('receipt_duplicate_candidates');
 
-    // Strict scope check: No later-stage business tables must exist (deferred to CP5+)
+    // Strict scope check: No later-stage business tables must exist (deferred to CP6+)
     expect(tableNames).not.toContain('expenses');
     expect(tableNames).not.toContain('approvals');
     expect(tableNames).not.toContain('finance_batches');

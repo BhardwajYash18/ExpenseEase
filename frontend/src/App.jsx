@@ -87,7 +87,7 @@ function App() {
       <div className="card" style={{ marginBottom: '20px' }}>
         <div className="status-badge ok">
           <span className="status-indicator"></span>
-          <span>Checkpoint 4 — AI Receipt Understanding & Structured Extraction</span>
+          <span>Checkpoint 5 — Policy Validation & Duplicate Detection</span>
         </div>
 
         <ul className="info-list">

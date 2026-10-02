@@ -145,4 +145,28 @@ router.put(
   extractionController.update
 );
 
+const validationController = require('../controllers/validationController');
+
+/**
+ * POST /api/receipts/:id/validation
+ * Run deterministic policy validation and duplicate detection (Checkpoint 5).
+ */
+router.post(
+  '/:id/validation',
+  authenticate,
+  requireRole('EMPLOYEE', 'MANAGER', 'FINANCE'),
+  validationController.validateReceipt
+);
+
+/**
+ * GET /api/receipts/:id/validation
+ * Retrieve latest policy validation and duplicate results.
+ */
+router.get(
+  '/:id/validation',
+  authenticate,
+  requireRole('EMPLOYEE', 'MANAGER', 'FINANCE'),
+  validationController.getReceiptValidation
+);
+
 module.exports = router;

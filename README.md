@@ -2,11 +2,11 @@
 
 ExpensEase is a B2B expense-management platform for small and mid-sized businesses (SMBs). The application is delivered as a single responsive Progressive Web Application (PWA) for desktop and mobile browsers, backed by a Node.js API orchestrator, a dedicated Python document processing service, and PostgreSQL.
 
-> **Current Status**: `CHECKPOINT 4 — AI RECEIPT UNDERSTANDING & STRUCTURED EXTRACTION COMPLETED`
+> **Current Status**: `CHECKPOINT 5 — POLICY VALIDATION & DUPLICATE DETECTION COMPLETED`
 >
-> Checkpoints 0, 1, 2, 3, and 4 are fully implemented, verified, and tested. The project foundation, deterministic database migrations, PostgreSQL Row-Level Security (RLS) multi-tenancy model, bcrypt password hashing, HS256-pinned JWT authentication, strict RBAC authorization, receipt capture & Tesseract OCR pipeline, AI receipt understanding with provider abstraction, immutable dual-field provenance, deterministic effective values, and PWA human confirmation are complete.
+> Checkpoints 0, 1, 2, 3, 4, and 5 are fully implemented, verified, and tested. The project foundation, deterministic database migrations, PostgreSQL Row-Level Security (RLS) multi-tenancy model, bcrypt password hashing, HS256-pinned JWT authentication, strict RBAC authorization, receipt capture & Tesseract OCR pipeline, AI receipt understanding with provider abstraction, immutable dual-field provenance, deterministic effective values, deterministic policy engine, decimal-safe monetary arithmetic, multi-signal tenant-scoped duplicate detection, and PWA validation UI are complete.
 >
-> In accordance with `AGENTS.md`, later-stage business workflows (deterministic policy validation, duplicate detection, approval workflows, Finance Batches, Journal Entries, and CSV export) are intentionally deferred to subsequent checkpoints.
+> In accordance with `AGENTS.md`, later-stage business workflows (approval/rejection workflows in CP6, Finance Batches in CP7, Journal Entries in CP8, and CSV/QuickBooks/Xero in CP9) are intentionally deferred to subsequent checkpoints.
 
 ---
 
@@ -136,6 +136,31 @@ ExpensEase utilizes a **four-service application architecture**:
   - Flagged for review alerts and confidence score.
   - In-place Edit / Confirm form with deterministic effective value calculation.
   - Clear assistive AI principle banner.
+
+### Checkpoint 5 — Policy Validation + Duplicate Detection
+- [x] Applied deterministic SQL migration `005_create_validation_results.sql`:
+  - `tenant_policies` table (UUID PK, `tenant_id` UNIQUE FK, `max_amount`, `require_receipt_above`, `restricted_categories` JSONB, `policy_version`).
+  - `receipt_validation_results` table (UUID PK, `receipt_id` FK, `tenant_id` FK, `validation_status`, `validation_version`, `policy_rules_result` JSONB, `duplicate_status`, `duplicate_score`, `validated_at`).
+  - `receipt_duplicate_candidates` table (UUID PK, `validation_result_id` FK, `receipt_id` FK, `candidate_receipt_id` FK, `tenant_id` FK, `similarity_score`, `matching_signals` JSONB, `detection_method`, `model_version`).
+  - Enabled and forced PostgreSQL RLS with `tenant_isolation_policy` on all three tables and granted least-privilege permissions to `expensease_app`.
+- [x] Implemented dedicated deterministic policy engine (`backend/src/services/policy/`):
+  - `decimalUtils.js`: Safe monetary comparisons via integer cents and precision validation without floating-point hazards.
+  - `policyRules.js`: Strict, deterministic rules (`MAX_AMOUNT`, `AMOUNT_VALIDITY`, `REQUIRED_FIELDS`, `RESTRICTED_CATEGORY`, `RECEIPT_DATE_VALIDITY`, `RECEIPT_REQUIRED`).
+  - `policyEngine.js`: Zero LLM involvement in compliance; strictly reproducible validation results returning `PASSED`, `FAILED`, or `REVIEW_REQUIRED`.
+- [x] Implemented tenant-isolated duplicate detection (`backend/src/services/duplicate/`):
+  - Multi-signal scoring engine combining merchant similarity (token Jaccard + Dice bigrams), total amount similarity (decimal cents delta), date proximity, and receipt number/text overlap.
+  - Categorizes candidate risk into `NO_MATCH`, `POSSIBLE_DUPLICATE`, and `HIGH_SIMILARITY` ($\ge 0.85$).
+  - Strict self-exclusion (`WHERE r.id != $1`) and strict tenant isolation via RLS.
+  - Purely advisory signal: never independently approves or rejects an expense.
+- [x] Validation service and controllers (`validationService.js`, `validationController.js`):
+  - Mounted under `/api/receipts/:id/validation` (`POST`, `GET`).
+  - Strict RBAC: `EMPLOYEE` (own receipt), `MANAGER` and `FINANCE` (tenant receipts).
+  - Validation operates strictly on deterministic effective values while preserving raw AI extraction and human confirmation values.
+- [x] Enhanced React PWA interface (`ReceiptView.jsx`, `index.css`):
+  - Interactive Policy & Duplicate Validation card.
+  - Visual badges for policy status (`Policy passed`, `Policy violation`, `Review required`) and duplicate risk (`No duplicate candidate`, `Possible duplicate`, `High similarity`).
+  - Detailed rule results table with actual vs expected values and candidate similarity signal breakdowns.
+  - Clear AI principles and review signal disclaimers (no approval/rejection buttons in CP5).
 
 ---
 

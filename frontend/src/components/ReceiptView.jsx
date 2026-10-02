@@ -21,7 +21,13 @@ export default function ReceiptView({ receipt, authToken, currentUser }) {
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Fetch extraction when receipt changes
+  // Checkpoint 5 Validation States
+  const [validation, setValidation] = useState(null);
+  const [loadingValidation, setLoadingValidation] = useState(false);
+  const [validatingLoading, setValidatingLoading] = useState(false);
+  const [validationError, setValidationError] = useState(null);
+
+  // Fetch extraction and validation when receipt changes
   useEffect(() => {
     let isMounted = true;
     async function fetchExtraction() {
@@ -51,11 +57,59 @@ export default function ReceiptView({ receipt, authToken, currentUser }) {
       }
     }
 
+    async function fetchValidation() {
+      if (!receipt?.id || !authToken) return;
+      setLoadingValidation(true);
+      setValidationError(null);
+      try {
+        const res = await fetch(`/api/receipts/${receipt.id}/validation`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (res.status === 404) {
+          if (isMounted) setValidation(null);
+          return;
+        }
+        const data = await res.json();
+        if (res.ok && isMounted) {
+          setValidation(data.validation);
+        }
+      } catch (err) {
+        // Not yet validated
+      } finally {
+        if (isMounted) setLoadingValidation(false);
+      }
+    }
+
     fetchExtraction();
+    fetchValidation();
     return () => {
       isMounted = false;
     };
   }, [receipt?.id, authToken]);
+
+  async function handleRunValidation() {
+    if (!receipt?.id || !authToken) return;
+    setValidatingLoading(true);
+    setValidationError(null);
+    try {
+      const res = await fetch(`/api/receipts/${receipt.id}/validation`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error?.message || 'Validation failed');
+      }
+      setValidation(data.validation);
+    } catch (err) {
+      setValidationError(err.message);
+    } finally {
+      setValidatingLoading(false);
+    }
+  }
 
   function initEditForm(ext) {
     if (!ext) return;
@@ -452,6 +506,178 @@ export default function ReceiptView({ receipt, authToken, currentUser }) {
               </div>
             </form>
           )}
+          {/* Checkpoint 5: Policy Validation & Duplicate Detection */}
+          <div className="validation-card" style={{ marginTop: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+              <div>
+                <h4 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-primary)' }}>
+                  Policy & Duplicate Validation
+                </h4>
+                <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Deterministic policy engine & tenant-isolated duplicate detection
+                </p>
+              </div>
+
+              <button
+                type="button"
+                id="run-validation-btn"
+                className="btn btn-primary"
+                onClick={handleRunValidation}
+                disabled={validatingLoading || !extraction}
+                style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+              >
+                {validatingLoading ? 'Validating...' : (validation ? 'Re-run Validation' : 'Run Policy Validation')}
+              </button>
+            </div>
+
+            {validationError && (
+              <div className="alert alert-danger" style={{ marginBottom: '12px', fontSize: '0.8rem' }}>
+                {validationError}
+              </div>
+            )}
+
+            {!validation && !loadingValidation && (
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', margin: '8px 0' }}>
+                No validation has been performed on this receipt yet. Click &quot;Run Policy Validation&quot; to evaluate against tenant policies and check for duplicate submissions.
+              </p>
+            )}
+
+            {loadingValidation && (
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '8px 0' }}>
+                Loading validation results...
+              </p>
+            )}
+
+            {validation && (
+              <div>
+                {/* Status Badges Header */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+                  {/* Policy Validation Status */}
+                  <div style={{ padding: '10px', background: 'rgba(15, 23, 42, 0.4)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Deterministic Policy</div>
+                    <div>
+                      {validation.policy?.status === 'PASSED' && (
+                        <span className="badge-pass">✓ Policy passed</span>
+                      )}
+                      {validation.policy?.status === 'FAILED' && (
+                        <span className="badge-fail">✕ Policy violation</span>
+                      )}
+                      {validation.policy?.status === 'REVIEW_REQUIRED' && (
+                        <span className="badge-review">⚠ Review required</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Duplicate Status */}
+                  <div style={{ padding: '10px', background: 'rgba(15, 23, 42, 0.4)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Duplicate Check</div>
+                    <div>
+                      {validation.duplicate?.status === 'NO_MATCH' && (
+                        <span className="badge-dup-none">✓ No duplicate candidate</span>
+                      )}
+                      {validation.duplicate?.status === 'POSSIBLE_DUPLICATE' && (
+                        <span className="badge-dup-possible">⚠ Possible duplicate</span>
+                      )}
+                      {validation.duplicate?.status === 'HIGH_SIMILARITY' && (
+                        <span className="badge-dup-high">⚠ High similarity</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Policy Rules List */}
+                <div style={{ marginBottom: '16px' }}>
+                  <h5 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                    Evaluated Policy Rules ({validation.policy?.rules?.length || 0})
+                  </h5>
+                  <table className="data-table" style={{ fontSize: '0.8rem' }}>
+                    <thead>
+                      <tr>
+                        <th>Rule</th>
+                        <th>Status</th>
+                        <th>Message</th>
+                        <th>Actual / Expected</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {validation.policy?.rules?.map((r, idx) => (
+                        <tr key={idx}>
+                          <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{r.rule}</td>
+                          <td>
+                            {r.status === 'PASSED' && <span className="badge-pass" style={{ fontSize: '0.7rem' }}>PASS</span>}
+                            {r.status === 'FAILED' && <span className="badge-fail" style={{ fontSize: '0.7rem' }}>FAIL</span>}
+                            {r.status === 'REVIEW_REQUIRED' && <span className="badge-review" style={{ fontSize: '0.7rem' }}>REVIEW</span>}
+                          </td>
+                          <td style={{ color: r.status === 'FAILED' ? '#f87171' : 'var(--text-primary)' }}>{r.message}</td>
+                          <td style={{ color: 'var(--text-muted)' }}>
+                            {r.actual_value !== undefined && r.actual_value !== null ? String(r.actual_value) : '-'} / {r.expected_value !== undefined && r.expected_value !== null ? String(r.expected_value) : '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Duplicate Candidates List */}
+                <div style={{ marginBottom: '16px' }}>
+                  <h5 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                    Duplicate Candidates ({validation.duplicate?.candidates?.length || 0})
+                  </h5>
+                  {(!validation.duplicate?.candidates || validation.duplicate.candidates.length === 0) ? (
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, fontStyle: 'italic' }}>
+                      No duplicate candidate detected within tenant.
+                    </p>
+                  ) : (
+                    <table className="data-table" style={{ fontSize: '0.8rem' }}>
+                      <thead>
+                        <tr>
+                          <th>Candidate Receipt ID</th>
+                          <th>Similarity Score</th>
+                          <th>Matching Signals</th>
+                          <th>Method</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {validation.duplicate.candidates.map((cand, idx) => (
+                          <tr key={idx}>
+                            <td style={{ fontFamily: 'monospace' }}>
+                              {cand.candidateReceiptId ? cand.candidateReceiptId.slice(0, 8) + '...' : '-'}
+                            </td>
+                            <td>
+                              <span style={{ fontWeight: 600, color: cand.similarityScore >= 0.85 ? '#f87171' : '#fbbf24' }}>
+                                {(cand.similarityScore * 100).toFixed(1)}%
+                              </span>
+                            </td>
+                            <td>
+                              {cand.matchingSignals && (
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                  {Object.entries(cand.matchingSignals)
+                                    .map(([k, v]) => `${k}: ${v}`)
+                                    .join(' | ')}
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                              {cand.detectionMethod || 'heuristics'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                {/* Provenance & Disclaimer */}
+                <div className="provenance-box" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  <div><strong>Validation Version:</strong> {validation.metadata?.validationVersion || 'v1'} &bull; <strong>Validated At:</strong> {validation.metadata?.validatedAt ? new Date(validation.metadata.validatedAt).toLocaleString() : 'N/A'}</div>
+                  <div style={{ marginTop: '4px', fontStyle: 'italic' }}>
+                    Core Principle: AI understands and suggests. Deterministic code validates. Authorized humans decide. Accounting logic records.
+                    Validation results and duplicate detection are review signals and do not represent approval or rejection workflow decisions.
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Raw OCR text toggle */}
           <details style={{ marginTop: '16px', fontSize: '0.8rem' }}>
