@@ -2,11 +2,11 @@
 
 ExpensEase is a B2B expense-management platform for small and mid-sized businesses (SMBs). The application is delivered as a single responsive Progressive Web Application (PWA) for desktop and mobile browsers, backed by a Node.js API orchestrator, a dedicated Python document processing service, and PostgreSQL.
 
-> **Current Status**: `CHECKPOINT 5 — POLICY VALIDATION & DUPLICATE DETECTION COMPLETED`
+> **Current Status**: `CHECKPOINT 6 — APPROVAL WORKFLOW COMPLETED`
 >
-> Checkpoints 0, 1, 2, 3, 4, and 5 are fully implemented, verified, and tested. The project foundation, deterministic database migrations, PostgreSQL Row-Level Security (RLS) multi-tenancy model, bcrypt password hashing, HS256-pinned JWT authentication, strict RBAC authorization, receipt capture & Tesseract OCR pipeline, AI receipt understanding with provider abstraction, immutable dual-field provenance, deterministic effective values, deterministic policy engine, decimal-safe monetary arithmetic, multi-signal tenant-scoped duplicate detection, and PWA validation UI are complete.
+> Checkpoints 0, 1, 2, 3, 4, 5, and 6 are fully implemented, verified, and tested. The project foundation, deterministic database migrations, PostgreSQL Row-Level Security (RLS) multi-tenancy model, bcrypt password hashing, HS256-pinned JWT authentication, strict RBAC authorization, receipt capture & Tesseract OCR pipeline, AI receipt understanding with provider abstraction, immutable dual-field provenance, deterministic effective values, deterministic policy engine, decimal-safe monetary arithmetic, multi-signal tenant-scoped duplicate detection, server-enforced approval workflow state machine (`DRAFT`, `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, `CORRECTION_REQUESTED`), manager decisions with mandatory reasons, separation of duties, pessimistic concurrency control, append-only audit trail, and PWA approval interface are complete.
 >
-> In accordance with `AGENTS.md`, later-stage business workflows (approval/rejection workflows in CP6, Finance Batches in CP7, Journal Entries in CP8, and CSV/QuickBooks/Xero in CP9) are intentionally deferred to subsequent checkpoints.
+> In accordance with `AGENTS.md`, later-stage accounting workflows (Finance Batches in CP7, Journal Entries in CP8, and CSV/QuickBooks/Xero in CP9) are intentionally deferred to subsequent checkpoints.
 
 ---
 
@@ -161,6 +161,36 @@ ExpensEase utilizes a **four-service application architecture**:
   - Visual badges for policy status (`Policy passed`, `Policy violation`, `Review required`) and duplicate risk (`No duplicate candidate`, `Possible duplicate`, `High similarity`).
   - Detailed rule results table with actual vs expected values and candidate similarity signal breakdowns.
   - Clear AI principles and review signal disclaimers (no approval/rejection buttons in CP5).
+
+### Checkpoint 6 — Approval Workflow
+- [x] Applied deterministic SQL migration `006_create_approval_workflows.sql`:
+  - `expense_workflows` table (UUID PK, `receipt_id` UNIQUE FK, `tenant_id` FK, `current_state` with strict `CHECK` constraint: `DRAFT`, `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, `CORRECTION_REQUESTED`).
+  - `expense_workflow_actions` table (UUID PK, `workflow_id` FK, `receipt_id` FK, `tenant_id` FK, `actor_user_id` FK, `actor_role`, `action` with strict `CHECK` constraint: `SUBMIT`, `APPROVE`, `REJECT`, `REQUEST_CORRECTION`, `reason`, `metadata`, `created_at`).
+  - Forced PostgreSQL RLS with `tenant_isolation_policy` on both tables using `app.current_tenant_id`.
+  - Granted least-privilege permissions to `expensease_app`: CRUD on `expense_workflows`, append-only (`SELECT, INSERT`) on `expense_workflow_actions`.
+- [x] Implemented robust workflow service (`backend/src/services/workflowService.js`):
+  - Strict 5-state state machine: `DRAFT`, `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, `CORRECTION_REQUESTED`.
+  - Zero ghost/pipeline states (`PROCESSING`, `VALIDATION`, or `FINANCE`).
+  - Strict transition controls:
+    - `SUBMIT`: `DRAFT` / `CORRECTION_REQUESTED` → `PENDING_APPROVAL`. Enforces that the employee is the expense owner, OCR/extraction is completed/confirmed, and CP5 validation has run.
+    - `APPROVE`: `PENDING_APPROVAL` → `APPROVED`. Manager role only; separation of duties enforces managers cannot approve their own submissions; row-level locking (`SELECT ... FOR UPDATE OF w`).
+    - `REJECT`: `PENDING_APPROVAL` → `REJECTED`. Manager role only; enforces mandatory non-empty rejection reason.
+    - `REQUEST_CORRECTION`: `PENDING_APPROVAL` → `CORRECTION_REQUESTED`. Manager role only; enforces mandatory non-empty correction reason.
+  - Audit logging: Every transition persists an immutable record in `expense_workflow_actions`.
+- [x] Mounted workflow API routes (`backend/src/routes/receipts.js` & `backend/src/controllers/workflowController.js`):
+  - `GET /api/receipts/:id/workflow`
+  - `POST /api/receipts/:id/workflow/submit`
+  - `POST /api/receipts/:id/workflow/approve`
+  - `POST /api/receipts/:id/workflow/reject`
+  - `POST /api/receipts/:id/workflow/request-correction`
+  - Server-side RBAC and tenant authorization on all endpoints.
+- [x] Enhanced React PWA interface (`ReceiptView.jsx`, `App.jsx`, `index.css`):
+  - Interactive Workflow status card displaying authoritative status badges.
+  - Dynamic employee action buttons: Submit for Approval / Resubmit after Correction.
+  - Manager decision modal with mandatory reason prompt for rejection and correction requests.
+  - Complete, chronological audit trail timeline showing who, what, when, and reasons.
+  - Reviewer workspace switcher in `App.jsx` allowing Managers and Finance to easily browse and review tenant receipts.
+  - Clear guidance for Finance users that approved expenses are ready for CP7 Finance Batches.
 
 ---
 

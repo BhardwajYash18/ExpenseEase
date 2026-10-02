@@ -27,7 +27,14 @@ export default function ReceiptView({ receipt, authToken, currentUser }) {
   const [validatingLoading, setValidatingLoading] = useState(false);
   const [validationError, setValidationError] = useState(null);
 
-  // Fetch extraction and validation when receipt changes
+  // Checkpoint 6 Approval Workflow States
+  const [workflowData, setWorkflowData] = useState(null);
+  const [loadingWorkflow, setLoadingWorkflow] = useState(false);
+  const [workflowError, setWorkflowError] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [reasonModal, setReasonModal] = useState(null); // { type: 'REJECT' | 'REQUEST_CORRECTION', reason: '' }
+
+  // Fetch extraction, validation, and workflow when receipt changes
   useEffect(() => {
     let isMounted = true;
     async function fetchExtraction() {
@@ -80,8 +87,32 @@ export default function ReceiptView({ receipt, authToken, currentUser }) {
       }
     }
 
+    async function fetchWorkflow() {
+      if (!receipt?.id || !authToken) return;
+      setLoadingWorkflow(true);
+      setWorkflowError(null);
+      try {
+        const res = await fetch(`/api/receipts/${receipt.id}/workflow`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (res.status === 404) {
+          if (isMounted) setWorkflowData(null);
+          return;
+        }
+        const data = await res.json();
+        if (res.ok && isMounted) {
+          setWorkflowData(data);
+        }
+      } catch (err) {
+        // Workflow may not exist or not ready
+      } finally {
+        if (isMounted) setLoadingWorkflow(false);
+      }
+    }
+
     fetchExtraction();
     fetchValidation();
+    fetchWorkflow();
     return () => {
       isMounted = false;
     };
@@ -108,6 +139,137 @@ export default function ReceiptView({ receipt, authToken, currentUser }) {
       setValidationError(err.message);
     } finally {
       setValidatingLoading(false);
+    }
+  }
+
+  async function reloadWorkflow() {
+    if (!receipt?.id || !authToken) return;
+    setLoadingWorkflow(true);
+    setWorkflowError(null);
+    try {
+      const res = await fetch(`/api/receipts/${receipt.id}/workflow`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (res.status === 404) {
+        setWorkflowData(null);
+        return;
+      }
+      const data = await res.json();
+      if (res.ok) {
+        setWorkflowData(data);
+      }
+    } catch (err) {
+      setWorkflowError(err.message);
+    } finally {
+      setLoadingWorkflow(false);
+    }
+  }
+
+  async function handleSubmitWorkflow() {
+    if (!receipt?.id || !authToken) return;
+    setActionLoading(true);
+    setWorkflowError(null);
+    try {
+      const res = await fetch(`/api/receipts/${receipt.id}/workflow/submit`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error?.message || 'Submission failed');
+      }
+      await reloadWorkflow();
+    } catch (err) {
+      setWorkflowError(err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleApproveWorkflow() {
+    if (!receipt?.id || !authToken) return;
+    setActionLoading(true);
+    setWorkflowError(null);
+    try {
+      const res = await fetch(`/api/receipts/${receipt.id}/workflow/approve`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error?.message || 'Approval failed');
+      }
+      await reloadWorkflow();
+    } catch (err) {
+      setWorkflowError(err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleRejectWorkflow(reason) {
+    if (!receipt?.id || !authToken) return;
+    if (!reason || !reason.trim()) {
+      setWorkflowError('Rejection reason is required by business policy');
+      return;
+    }
+    setActionLoading(true);
+    setWorkflowError(null);
+    try {
+      const res = await fetch(`/api/receipts/${receipt.id}/workflow/reject`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ reason: reason.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error?.message || 'Rejection failed');
+      }
+      setReasonModal(null);
+      await reloadWorkflow();
+    } catch (err) {
+      setWorkflowError(err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleRequestCorrectionWorkflow(reason) {
+    if (!receipt?.id || !authToken) return;
+    if (!reason || !reason.trim()) {
+      setWorkflowError('Correction reason is required by business policy');
+      return;
+    }
+    setActionLoading(true);
+    setWorkflowError(null);
+    try {
+      const res = await fetch(`/api/receipts/${receipt.id}/workflow/request-correction`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ reason: reason.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error?.message || 'Request correction failed');
+      }
+      setReasonModal(null);
+      await reloadWorkflow();
+    } catch (err) {
+      setWorkflowError(err.message);
+    } finally {
+      setActionLoading(false);
     }
   }
 
@@ -677,6 +839,357 @@ export default function ReceiptView({ receipt, authToken, currentUser }) {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Checkpoint 6 — Approval Workflow Card */}
+          <div className="workflow-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h4 style={{ margin: 0, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>Workflow & Approval State</span>
+                {(() => {
+                  const state = workflowData?.workflow?.current_state || 'DRAFT';
+                  switch (state) {
+                    case 'PENDING_APPROVAL':
+                      return <span className="badge-pending">Pending Approval</span>;
+                    case 'APPROVED':
+                      return <span className="badge-approved">Approved</span>;
+                    case 'REJECTED':
+                      return <span className="badge-rejected">Rejected</span>;
+                    case 'CORRECTION_REQUESTED':
+                      return <span className="badge-correction">Correction Requested</span>;
+                    case 'DRAFT':
+                    default:
+                      return <span className="badge-draft">Draft</span>;
+                  }
+                })()}
+              </h4>
+              <button
+                type="button"
+                className="btn btn-outline"
+                style={{ fontSize: '0.75rem', padding: '4px 8px' }}
+                onClick={reloadWorkflow}
+                disabled={loadingWorkflow}
+              >
+                {loadingWorkflow ? 'Refreshing...' : 'Refresh'}
+              </button>
+            </div>
+
+            {workflowError && (
+              <div className="alert alert-danger" style={{ marginBottom: '12px', fontSize: '0.85rem' }}>
+                {workflowError}
+              </div>
+            )}
+
+            {/* Workflow Banner for Rejection or Correction with Reason */}
+            {(() => {
+              const state = workflowData?.workflow?.current_state || 'DRAFT';
+              const actions = workflowData?.actions || [];
+              const latestReasonAction = actions.slice().reverse().find((a) => a.reason);
+              if (state === 'REJECTED' && latestReasonAction) {
+                return (
+                  <div className="alert alert-danger" style={{ marginBottom: '14px', fontSize: '0.85rem' }}>
+                    <strong>Rejection Reason:</strong> {latestReasonAction.reason}
+                    <div style={{ fontSize: '0.75rem', marginTop: '4px', opacity: 0.85 }}>
+                      Recorded by {latestReasonAction.actor_first_name} ({latestReasonAction.actor_role}) on {new Date(latestReasonAction.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                );
+              }
+              if (state === 'CORRECTION_REQUESTED' && latestReasonAction) {
+                return (
+                  <div className="alert" style={{ background: 'rgba(249, 115, 22, 0.15)', border: '1px solid rgba(249, 115, 22, 0.4)', color: '#fb923c', marginBottom: '14px', fontSize: '0.85rem' }}>
+                    <strong>Correction Requested:</strong> {latestReasonAction.reason}
+                    <div style={{ fontSize: '0.75rem', marginTop: '4px', opacity: 0.85 }}>
+                      Please adjust the confirmed receipt details above and resubmit.
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
+            {/* Workflow Action Controls */}
+            {(() => {
+              const state = workflowData?.workflow?.current_state || 'DRAFT';
+              const isUploader = (workflowData?.workflow?.submitted_by && workflowData?.workflow?.submitted_by === currentUser?.id) || receipt.uploadedBy === currentUser?.id;
+              const hasExtraction = !!extraction;
+              const hasValidation = !!validation;
+
+              return (
+                <div style={{ marginBottom: '16px', padding: '12px', background: 'rgba(30, 41, 59, 0.4)', borderRadius: '6px' }}>
+                  <div style={{ fontSize: '0.85rem', marginBottom: '10px' }}>
+                    <strong>Workflow Status:</strong> <code style={{ color: '#38bdf8' }}>{state}</code>
+                    {workflowData?.workflow?.submitted_by && (
+                      <span style={{ marginLeft: '12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        Submitter: {workflowData.workflow.submitted_by.slice(0, 8)}...
+                      </span>
+                    )}
+                  </div>
+
+                  {/* EMPLOYEE Controls */}
+                  {currentUser?.role === 'EMPLOYEE' && (
+                    <div>
+                      {state === 'DRAFT' && (
+                        <div>
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            onClick={handleSubmitWorkflow}
+                            disabled={actionLoading || !hasExtraction || !hasValidation}
+                            style={{ fontSize: '0.85rem', padding: '8px 16px' }}
+                          >
+                            {actionLoading ? 'Submitting...' : 'Submit Expense for Approval'}
+                          </button>
+                          {(!hasExtraction || !hasValidation) && (
+                            <p style={{ fontSize: '0.75rem', color: '#f59e0b', marginTop: '6px', margin: 0 }}>
+                              * Notice: Extraction and policy validation must be completed before submission.
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {state === 'CORRECTION_REQUESTED' && (
+                        <div>
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            onClick={handleSubmitWorkflow}
+                            disabled={actionLoading}
+                            style={{ fontSize: '0.85rem', padding: '8px 16px' }}
+                          >
+                            {actionLoading ? 'Resubmitting...' : 'Resubmit Corrected Expense'}
+                          </button>
+                          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', margin: 0 }}>
+                            Review and save any corrections above before resubmitting.
+                          </p>
+                        </div>
+                      )}
+
+                      {state === 'PENDING_APPROVAL' && (
+                        <p style={{ fontSize: '0.85rem', color: '#fbbf24', margin: 0 }}>
+                          &#x23F3; Expense is submitted and currently awaiting manager review and decision.
+                        </p>
+                      )}
+
+                      {state === 'APPROVED' && (
+                        <p style={{ fontSize: '0.85rem', color: '#34d399', margin: 0 }}>
+                          &#x2714; Expense has been approved by management.
+                        </p>
+                      )}
+
+                      {state === 'REJECTED' && (
+                        <p style={{ fontSize: '0.85rem', color: '#f87171', margin: 0 }}>
+                          &#x2716; Expense was rejected by management.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* MANAGER Controls */}
+                  {currentUser?.role === 'MANAGER' && (
+                    <div>
+                      {state === 'PENDING_APPROVAL' && (
+                        <div>
+                          {isUploader ? (
+                            <div className="alert alert-warning" style={{ margin: 0, fontSize: '0.8rem' }}>
+                              <strong>Separation of Duties (AGENTS.md Section 13):</strong> You submitted this expense. Per governance rules, submitters cannot review or approve their own expenses. Another authorized manager must review.
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                              <button
+                                type="button"
+                                className="btn"
+                                onClick={handleApproveWorkflow}
+                                disabled={actionLoading}
+                                style={{
+                                  background: 'rgba(16, 185, 129, 0.25)',
+                                  border: '1px solid #10b981',
+                                  color: '#34d399',
+                                  fontSize: '0.85rem',
+                                  padding: '8px 16px',
+                                }}
+                              >
+                                {actionLoading ? 'Processing...' : 'Approve Expense'}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn"
+                                onClick={() => setReasonModal({ type: 'REQUEST_CORRECTION', reason: '' })}
+                                disabled={actionLoading}
+                                style={{
+                                  background: 'rgba(249, 115, 22, 0.2)',
+                                  border: '1px solid #f97316',
+                                  color: '#fb923c',
+                                  fontSize: '0.85rem',
+                                  padding: '8px 16px',
+                                }}
+                              >
+                                Request Correction
+                              </button>
+                              <button
+                                type="button"
+                                className="btn"
+                                onClick={() => setReasonModal({ type: 'REJECT', reason: '' })}
+                                disabled={actionLoading}
+                                style={{
+                                  background: 'rgba(239, 68, 68, 0.2)',
+                                  border: '1px solid #ef4444',
+                                  color: '#f87171',
+                                  fontSize: '0.85rem',
+                                  padding: '8px 16px',
+                                }}
+                              >
+                                Reject Expense
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {state === 'DRAFT' && (
+                        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0 }}>
+                          Expense is in DRAFT state. Awaiting submission by the employee.
+                        </p>
+                      )}
+
+                      {state === 'APPROVED' && (
+                        <p style={{ fontSize: '0.85rem', color: '#34d399', margin: 0 }}>
+                          &#x2714; Expense has already been approved.
+                        </p>
+                      )}
+
+                      {state === 'REJECTED' && (
+                        <p style={{ fontSize: '0.85rem', color: '#f87171', margin: 0 }}>
+                          &#x2716; Expense is rejected.
+                        </p>
+                      )}
+
+                      {state === 'CORRECTION_REQUESTED' && (
+                        <p style={{ fontSize: '0.85rem', color: '#fb923c', margin: 0 }}>
+                          &#x21BA; Correction requested. Awaiting resubmission by the employee.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* FINANCE Controls */}
+                  {currentUser?.role === 'FINANCE' && (
+                    <div>
+                      {state === 'APPROVED' ? (
+                        <div style={{ fontSize: '0.85rem', color: '#34d399' }}>
+                          &#x2714; Approved expense &mdash; available for Finance Batch grouping in Checkpoint 7 per PRD FR-09.1.
+                        </div>
+                      ) : (
+                        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0 }}>
+                          Expense is in state <code>{state}</code>. Awaiting manager approval before becoming available for finance processing.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Modal / Form for Mandatory Reason (Reject or Request Correction) */}
+            {reasonModal && (
+              <div
+                style={{
+                  background: 'rgba(15, 23, 42, 0.95)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  padding: '16px',
+                  marginBottom: '16px',
+                }}
+              >
+                <h5 style={{ margin: '0 0 8px 0', fontSize: '0.9rem', color: reasonModal.type === 'REJECT' ? '#f87171' : '#fb923c' }}>
+                  {reasonModal.type === 'REJECT' ? 'Enter Rejection Reason' : 'Enter Correction Request Reason'} (Mandatory per PRD FR-08.4)
+                </h5>
+                <textarea
+                  value={reasonModal.reason}
+                  onChange={(e) => setReasonModal({ ...reasonModal, reason: e.target.value })}
+                  rows={3}
+                  placeholder={`Describe the reason for ${reasonModal.type === 'REJECT' ? 'rejection' : 'correction'}...`}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    background: '#1e293b',
+                    color: '#fff',
+                    border: '1px solid #475569',
+                    fontSize: '0.85rem',
+                    marginBottom: '10px',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    onClick={() => setReasonModal(null)}
+                    style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={actionLoading || !reasonModal.reason.trim()}
+                    onClick={() => {
+                      if (reasonModal.type === 'REJECT') {
+                        handleRejectWorkflow(reasonModal.reason);
+                      } else {
+                        handleRequestCorrectionWorkflow(reasonModal.reason);
+                      }
+                    }}
+                    style={{
+                      fontSize: '0.8rem',
+                      padding: '6px 12px',
+                      background: reasonModal.type === 'REJECT' ? '#ef4444' : '#f97316',
+                    }}
+                  >
+                    {actionLoading ? 'Saving...' : 'Confirm'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Chronological Audit Trail & Workflow History */}
+            <div style={{ marginTop: '16px' }}>
+              <h5 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                Workflow Audit History ({workflowData?.actions?.length || 0} transitions)
+              </h5>
+              {(!workflowData?.actions || workflowData.actions.length === 0) ? (
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, fontStyle: 'italic' }}>
+                  No workflow transitions recorded yet.
+                </p>
+              ) : (
+                <div className="workflow-timeline">
+                  {workflowData.actions.map((act, idx) => (
+                    <div key={idx} className={`workflow-timeline-item action-${act.action}`}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <strong>{act.action}</strong>
+                          <span style={{ marginLeft: '8px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            {act.previous_state || 'INIT'} &rarr; {act.new_state}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          {act.created_at ? new Date(act.created_at).toLocaleString() : ''}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                        By: {act.actor_first_name} {act.actor_last_name} ({act.actor_email}) &bull; Role: <strong>{act.actor_role}</strong>
+                      </div>
+                      {act.reason && (
+                        <div style={{ marginTop: '4px', padding: '6px 10px', background: 'rgba(15, 23, 42, 0.4)', borderRadius: '4px', fontSize: '0.8rem', borderLeft: '2px solid #94a3b8' }}>
+                          <em>&ldquo;{act.reason}&rdquo;</em>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Raw OCR text toggle */}

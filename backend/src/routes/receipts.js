@@ -146,6 +146,7 @@ router.put(
 );
 
 const validationController = require('../controllers/validationController');
+const workflowController = require('../controllers/workflowController');
 
 /**
  * POST /api/receipts/:id/validation
@@ -167,6 +168,44 @@ router.get(
   authenticate,
   requireRole('EMPLOYEE', 'MANAGER', 'FINANCE'),
   validationController.getReceiptValidation
+);
+
+/**
+ * Workflow Routes (Checkpoint 6 - Approval Workflow)
+ */
+router.get(
+  '/:id/workflow',
+  authenticate,
+  requireRole('EMPLOYEE', 'MANAGER', 'FINANCE'),
+  workflowController.getWorkflow
+);
+
+router.post(
+  '/:id/workflow/submit',
+  authenticate,
+  requireRole('EMPLOYEE'),
+  workflowController.submitExpense
+);
+
+router.post(
+  '/:id/workflow/approve',
+  authenticate,
+  requireRole('MANAGER'),
+  workflowController.approveExpense
+);
+
+router.post(
+  '/:id/workflow/reject',
+  authenticate,
+  requireRole('MANAGER'),
+  workflowController.rejectExpense
+);
+
+router.post(
+  '/:id/workflow/request-correction',
+  authenticate,
+  requireRole('MANAGER'),
+  workflowController.requestCorrection
 );
 
 module.exports = router;

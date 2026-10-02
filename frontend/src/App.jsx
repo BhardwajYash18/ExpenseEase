@@ -8,6 +8,8 @@ function App() {
   const [authToken, setAuthToken] = useState(localStorage.getItem('token') || '');
   const [currentUser, setCurrentUser] = useState(null);
   const [latestReceipt, setLatestReceipt] = useState(null);
+  const [receiptsList, setReceiptsList] = useState([]);
+  const [loadingReceipts, setLoadingReceipts] = useState(false);
 
   // Form states for login testing
   const [email, setEmail] = useState('employee@acme.test');
@@ -15,6 +17,28 @@ function App() {
   const [slug, setSlug] = useState('acme-corp');
   const [loginError, setLoginError] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
+
+  async function fetchReceipts(token) {
+    if (!token) return;
+    setLoadingReceipts(true);
+    try {
+      const res = await fetch('/api/receipts', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const list = data.receipts || [];
+        setReceiptsList(list);
+        if (list.length > 0 && !latestReceipt) {
+          setLatestReceipt(list[0]);
+        }
+      }
+    } catch (err) {
+      // quiet fail
+    } finally {
+      setLoadingReceipts(false);
+    }
+  }
 
   useEffect(() => {
     // Check backend health endpoint
@@ -35,7 +59,10 @@ function App() {
         headers: { Authorization: `Bearer ${authToken}` },
       })
         .then((res) => (res.ok ? res.json() : Promise.reject('Invalid token')))
-        .then((data) => setCurrentUser(data.user))
+        .then((data) => {
+          setCurrentUser(data.user);
+          fetchReceipts(authToken);
+        })
         .catch(() => {
           setAuthToken('');
           setCurrentUser(null);
@@ -87,7 +114,7 @@ function App() {
       <div className="card" style={{ marginBottom: '20px' }}>
         <div className="status-badge ok">
           <span className="status-indicator"></span>
-          <span>Checkpoint 5 — Policy Validation & Duplicate Detection</span>
+          <span>Checkpoint 6 — Approval Workflow</span>
         </div>
 
         <ul className="info-list">
@@ -111,9 +138,9 @@ function App() {
       {/* Authentication / Role Login Card */}
       {!currentUser ? (
         <div className="card" style={{ marginBottom: '20px' }}>
-          <h3 className="section-title">Sign In for Receipt Upload</h3>
+          <h3 className="section-title">Sign In to ExpensEase</h3>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
-            Receipt upload requires an authenticated <strong>EMPLOYEE</strong> role.
+            Sign in as <strong>EMPLOYEE</strong>, <strong>MANAGER</strong>, or <strong>FINANCE</strong>.
           </p>
 
           {loginError && <div className="alert alert-danger" style={{ marginBottom: '14px' }}>{loginError}</div>}
@@ -170,13 +197,58 @@ function App() {
       {currentUser && currentUser.role === 'EMPLOYEE' && (
         <ReceiptCapture
           authToken={authToken}
-          onReceiptUploaded={(receipt) => setLatestReceipt(receipt)}
+          onReceiptUploaded={(receipt) => {
+            setLatestReceipt(receipt);
+            fetchReceipts(authToken);
+          }}
         />
       )}
 
       {currentUser && currentUser.role !== 'EMPLOYEE' && (
-        <div className="alert alert-info">
-          Role Notice: Signed in as <strong>{currentUser.role}</strong>. Per ExpensEase RBAC (AGENTS.md Section 13), receipt uploading is restricted to <strong>EMPLOYEE</strong> accounts. Managers and Finance reviewers can inspect existing receipts.
+        <div className="alert alert-info" style={{ marginBottom: '20px' }}>
+          Role Notice: Signed in as <strong>{currentUser.role}</strong>. Per ExpensEase RBAC (AGENTS.md Section 13), receipt uploading is restricted to <strong>EMPLOYEE</strong> accounts. Managers and Finance reviewers can inspect existing receipts and perform approval/queue actions below.
+        </div>
+      )}
+
+      {/* Receipts Selector / Browser */}
+      {currentUser && receiptsList.length > 0 && (
+        <div className="card" style={{ marginBottom: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+              Select Expense Receipt to Review ({receiptsList.length} available):
+            </label>
+            <button
+              type="button"
+              className="btn btn-outline"
+              style={{ fontSize: '0.75rem', padding: '4px 8px' }}
+              onClick={() => fetchReceipts(authToken)}
+              disabled={loadingReceipts}
+            >
+              {loadingReceipts ? 'Refreshing...' : 'Refresh List'}
+            </button>
+          </div>
+          <select
+            value={latestReceipt?.id || ''}
+            onChange={(e) => {
+              const selected = receiptsList.find((r) => r.id === e.target.value);
+              if (selected) setLatestReceipt(selected);
+            }}
+            style={{
+              width: '100%',
+              padding: '8px 12px',
+              borderRadius: '6px',
+              background: '#0f172a',
+              color: '#fff',
+              border: '1px solid var(--border-color)',
+              fontSize: '0.85rem',
+            }}
+          >
+            {receiptsList.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.original_filename || r.originalFilename || 'Receipt'} &bull; Uploaded: {new Date(r.created_at || r.createdAt).toLocaleDateString()} &bull; ID: {r.id.slice(0, 8)}...
+              </option>
+            ))}
+          </select>
         </div>
       )}
 
@@ -186,7 +258,7 @@ function App() {
       )}
 
       <footer className="footer">
-        ExpensEase &bull; Responsive Progressive Web Application &bull; Checkpoint 4 (AI Receipt Understanding)
+        ExpensEase &bull; Responsive Progressive Web Application &bull; Checkpoint 6 (Approval Workflow)
       </footer>
     </div>
   );
