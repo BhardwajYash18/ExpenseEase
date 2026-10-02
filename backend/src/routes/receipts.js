@@ -98,6 +98,8 @@ router.get(
   receiptController.getFile
 );
 
+const extractionController = require('../controllers/extractionController');
+
 /**
  * GET /api/receipts/:id/ocr
  * Get OCR status and raw extracted text.
@@ -107,6 +109,40 @@ router.get(
   authenticate,
   requireRole('EMPLOYEE', 'MANAGER', 'FINANCE'),
   receiptController.getOcr
+);
+
+/**
+ * POST /api/receipts/:id/extraction
+ * Trigger AI structured extraction on the receipt's OCR text.
+ */
+router.post(
+  '/:id/extraction',
+  authenticate,
+  requireRole('EMPLOYEE', 'MANAGER', 'FINANCE'),
+  extractionController.trigger
+);
+
+/**
+ * GET /api/receipts/:id/extraction
+ * Get extraction results, confidence, provenance, and deterministic effective values.
+ */
+router.get(
+  '/:id/extraction',
+  authenticate,
+  requireRole('EMPLOYEE', 'MANAGER', 'FINANCE'),
+  extractionController.get
+);
+
+/**
+ * PUT /api/receipts/:id/extraction
+ * Edit confirmed receipt values (human corrections).
+ * Preserves AI extraction immutably.
+ */
+router.put(
+  '/:id/extraction',
+  authenticate,
+  requireRole('EMPLOYEE', 'MANAGER', 'FINANCE'),
+  extractionController.update
 );
 
 module.exports = router;

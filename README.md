@@ -2,11 +2,11 @@
 
 ExpensEase is a B2B expense-management platform for small and mid-sized businesses (SMBs). The application is delivered as a single responsive Progressive Web Application (PWA) for desktop and mobile browsers, backed by a Node.js API orchestrator, a dedicated Python document processing service, and PostgreSQL.
 
-> **Current Status**: `CHECKPOINT 3 — RECEIPT CAPTURE + OCR COMPLETED`
+> **Current Status**: `CHECKPOINT 4 — AI RECEIPT UNDERSTANDING & STRUCTURED EXTRACTION COMPLETED`
 >
-> Checkpoints 0, 1, 2, and 3 are fully implemented, verified, and tested. The project foundation, deterministic database migrations, PostgreSQL Row-Level Security (RLS) multi-tenancy model, bcrypt password hashing, HS256-pinned JWT authentication, strict RBAC authorization, and the receipt capture & Tesseract OCR pipeline are complete.
+> Checkpoints 0, 1, 2, 3, and 4 are fully implemented, verified, and tested. The project foundation, deterministic database migrations, PostgreSQL Row-Level Security (RLS) multi-tenancy model, bcrypt password hashing, HS256-pinned JWT authentication, strict RBAC authorization, receipt capture & Tesseract OCR pipeline, AI receipt understanding with provider abstraction, immutable dual-field provenance, deterministic effective values, and PWA human confirmation are complete.
 >
-> In accordance with `AGENTS.md`, later-stage business workflows (AI/VLM receipt understanding and structured field extraction, deterministic policy validation, duplicate detection, approval workflows, Finance Batches, Journal Entries, and CSV export) are intentionally deferred to subsequent checkpoints.
+> In accordance with `AGENTS.md`, later-stage business workflows (deterministic policy validation, duplicate detection, approval workflows, Finance Batches, Journal Entries, and CSV export) are intentionally deferred to subsequent checkpoints.
 
 ---
 
@@ -28,12 +28,12 @@ ExpensEase utilizes a **four-service application architecture**:
                    /           \
                   ▼             ▼
         Python + FastAPI    PostgreSQL
-       Document/OCR Service
+        AI & OCR Service
 ```
 
-- **Frontend (`frontend/`)**: React-based responsive Progressive Web Application (PWA) with Web App Manifest, Service Worker support, device camera capture, and file upload interface.
-- **Primary Backend (`backend/`)**: Node.js + Express REST API orchestrator handling authentication, authorization (RBAC), receipt file validation with magic bytes, secure storage abstraction, multi-tenant context management, database access, and OCR dispatch.
-- **Document/OCR Service (`ai-service/`)**: Dedicated Python + FastAPI service for deterministic image preprocessing (OpenCV, Pillow) and Tesseract OCR raw text extraction. *(AI/LLM structured field understanding is deferred to Checkpoint 4).*
+- **Frontend (`frontend/`)**: React-based responsive Progressive Web Application (PWA) with Web App Manifest, Service Worker support, device camera capture, structured extraction inspection, and human confirmation form.
+- **Primary Backend (`backend/`)**: Node.js + Express REST API orchestrator handling authentication, authorization (RBAC), receipt file validation, secure storage abstraction, multi-tenant context management, database access, AI extraction dispatch, and deterministic effective value calculation.
+- **AI & OCR Service (`ai-service/`)**: Dedicated Python + FastAPI service for deterministic image preprocessing (OpenCV, Pillow), Tesseract OCR text extraction, and AI-assisted receipt understanding (Pydantic schema validation, mock/regex provider, configurable LLM provider, prompt-injection defense).
 - **Database (`database/`)**: PostgreSQL relational database managed via Docker Compose with deterministic SQL migrations, non-privileged application role, and Row-Level Security (RLS).
 
 ---
@@ -42,7 +42,7 @@ ExpensEase utilizes a **four-service application architecture**:
 
 - **Frontend**: React 18, Vite, Vanilla CSS, Web App Manifest, Service Worker, Concurrently.
 - **Primary Backend**: Node.js (v18+), Express 4, `pg` (PostgreSQL client pool), `bcryptjs` (saltRounds=12), `jsonwebtoken` (HS256 pinned), `multer`, `form-data`, `axios`, `express-validator`, Helmet, CORS, Dotenv.
-- **Document/OCR Service**: Python 3.11+, FastAPI, Uvicorn, Pillow, OpenCV (headless), Pytesseract (Tesseract OCR), Pydantic.
+- **AI & OCR Service**: Python 3.11+, FastAPI, Uvicorn, Pillow, OpenCV (headless), Pytesseract (Tesseract OCR), Pydantic, HTTPX.
 - **Database**: PostgreSQL 16 (Docker container), Row-Level Security (RLS), custom `expensease_app` unprivileged role.
 - **Containerization & Orchestration**: Docker, Docker Compose.
 
@@ -109,6 +109,33 @@ ExpensEase utilizes a **four-service application architecture**:
 - [x] Built responsive PWA components (`ReceiptCapture.jsx`, `ReceiptView.jsx`, `App.jsx`):
   - Dual capture: Desktop/gallery file picker and mobile camera capture (`capture="environment"`).
   - Instant image preview and raw OCR text viewer with untrusted data disclaimer.
+
+### Checkpoint 4 — AI Receipt Understanding & Structured Extraction
+- [x] Applied deterministic SQL migration `004_create_receipt_extractions.sql`:
+  - `receipt_extractions` table with dual-field provenance (`ai_*` vs `confirmed_*`, `corrected_by`, `corrected_at`).
+  - `receipt_line_items` table linked to `receipt_extractions` with `CASCADE` delete.
+  - Enabled and forced PostgreSQL RLS with `tenant_isolation_policy` on both tables.
+  - Explicitly granted permissions to `expensease_app`.
+- [x] Implemented AI service schemas & provider abstraction (`ai-service/`):
+  - Pydantic schema validation (`ReceiptExtractionResponse`, `ReceiptLineItemSchema`) enforcing 7 allowed categories (`Meals`, `Travel`, `Accommodation`, `Office Supplies`, `Software`, `Transportation`, `Other`).
+  - Safety prompts with prompt injection protection treating OCR text as untrusted data.
+  - Provider interface (`ReceiptUnderstandingProvider`), deterministic `MockReceiptProvider` for CI/tests, and `ConfigurableLLMProvider` using `httpx`.
+  - Graceful fallback: if LLM provider fails, safely falls back to mock provider.
+  - Mounted endpoint: `POST /receipt-understanding/extract`.
+- [x] Implemented backend extraction service & APIs (`backend/`):
+  - AI output schema validation and numeric sanitization (`aiOutputValidation.js`).
+  - `triggerExtraction`: Calls AI service, persists `ai_*` fields, inserts line items, marks status.
+  - `getExtraction`: Retrieves extraction and line items with deterministic effective values.
+  - `updateExtraction`: Human confirmation endpoint. Modifies `confirmed_*` fields, sets `corrected_by` and `corrected_at`. **Never overwrites or destroys `ai_*` fields**.
+  - Deterministic effective value computation:
+    $$\text{effective\_value} = \text{confirmed\_value if confirmed\_value IS NOT NULL else ai\_value}$$
+  - Strict RBAC: strictly `EMPLOYEE` (own receipts), `MANAGER` and `FINANCE` (tenant receipts). No invented reviewer role.
+  - Mounted endpoints: `POST /:id/extraction`, `GET /:id/extraction`, `PUT /:id/extraction`.
+- [x] Enhanced React PWA interface (`ReceiptView.jsx`):
+  - Displays extraction results, visual indicators for AI vs confirmed fields, and line items.
+  - Flagged for review alerts and confidence score.
+  - In-place Edit / Confirm form with deterministic effective value calculation.
+  - Clear assistive AI principle banner.
 
 ---
 
@@ -305,9 +332,13 @@ npm run dev:frontend
 | **Backend** | `GET` | `/api/receipts/:id` | Bearer Token | Any | Get single receipt metadata |
 | **Backend** | `GET` | `/api/receipts/:id/file` | Bearer Token | Any | Stream original stored receipt image |
 | **Backend** | `GET` | `/api/receipts/:id/ocr` | Bearer Token | Any | Get OCR status and raw extracted text |
+| **Backend** | `POST` | `/api/receipts/:id/extraction` | Bearer Token | `EMPLOYEE`, `MANAGER`, `FINANCE` | Trigger AI receipt understanding and structured field extraction |
+| **Backend** | `GET` | `/api/receipts/:id/extraction` | Bearer Token | `EMPLOYEE`, `MANAGER`, `FINANCE` | Get structured extraction, line items, and deterministic effective values |
+| **Backend** | `PUT` | `/api/receipts/:id/extraction` | Bearer Token | `EMPLOYEE`, `MANAGER`, `FINANCE` | Human confirmation of values (preserves immutable AI extraction) |
 | **AI Service** | `GET` | `/health` | No | Any | AI service liveness check |
 | **AI Service** | `POST` | `/ocr/extract` | No (Internal) | Any | Accepts multipart image, runs preprocessing & Tesseract OCR |
-| **Frontend** | `GET` | `/` | No | Any | Responsive PWA shell with camera/file capture & preview |
+| **AI Service** | `POST` | `/receipt-understanding/extract` | No (Internal) | Any | Accepts OCR text, extracts structured fields using configured provider |
+| **Frontend** | `GET` | `/` | No | Any | Responsive PWA shell with capture, OCR view, AI extraction & confirmation |
 
 ---
 
@@ -315,7 +346,7 @@ npm run dev:frontend
 
 All test suites run in automated CI-ready test runners:
 
-### Backend Tests (60 tests across 6 suites)
+### Backend Tests (72 tests across 7 suites)
 ```bash
 cd backend
 npm test
@@ -326,8 +357,9 @@ Tests cover:
 - Multi-tenancy RLS isolation, constraint violations, and pool context isolation (`multiTenancy.test.js`)
 - Password hashing, JWT signing, HS256 pinning, tampering/expiration rejection, and RBAC (`auth.test.js`)
 - Receipt file validation, magic byte spoofing detection, PDF rejection, strict EMPLOYEE upload RBAC, RLS receipt isolation, file streaming, OCR text retrieval, and OCR failure resilience (`receipts.test.js`)
+- Checkpoint 4 AI structured extraction: trigger AI extraction, AI output validation and sanitization, immutable AI provenance preservation, human confirmation (`confirmed_*`), deterministic effective values calculation, RLS cross-tenant isolation, RBAC role-scoped access (EMPLOYEE own, MANAGER/FINANCE tenant), and AI failure resilience (`extraction.test.js`)
 
-### AI / Document Service Tests (6 tests)
+### AI / Document Service Tests (12 tests)
 ```bash
 cd ai-service
 pytest
@@ -337,6 +369,7 @@ Tests cover:
 - Image preprocessing with valid and corrupted images (`test_ocr.py`)
 - Tesseract OCR extraction resilience and structured response schema
 - OCR API endpoint file upload validation and empty file rejection
+- Receipt understanding: valid structured receipt extraction, empty text handling, missing field handling without hallucination, prompt injection defense, category suggestions heuristic, and HTTP API endpoint (`test_receipt_understanding.py`)
 
 ### Frontend Production Build
 ```bash
@@ -351,4 +384,4 @@ Verifies clean compilation of the PWA bundle via Vite.
 
 Following the incremental development process in `AGENTS.md`, work will proceed to:
 
-- **Checkpoint 4 — AI Receipt Understanding**: Python/FastAPI AI layer for structured field extraction (merchant, transaction date, amount, taxes, line items), semantic categorization assistance, confidence scoring, and strict AI output schema validation. *(AI output remains assistive; deterministic business code validates all data).*
+- **Checkpoint 5 — Policy + Duplicate Validation**: Deterministic policy validation (amount limits, category restrictions, receipt requirements, configured exceptions) and similarity-based duplicate detection (human review flags). *(AI output remains assistive; deterministic business code validates all data).*

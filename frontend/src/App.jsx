@@ -87,7 +87,7 @@ function App() {
       <div className="card" style={{ marginBottom: '20px' }}>
         <div className="status-badge ok">
           <span className="status-indicator"></span>
-          <span>Checkpoint 3 — Receipt Capture + OCR Pipeline</span>
+          <span>Checkpoint 4 — AI Receipt Understanding & Structured Extraction</span>
         </div>
 
         <ul className="info-list">
@@ -96,8 +96,8 @@ function App() {
             <span className="info-value">{backendHealth}</span>
           </li>
           <li className="info-item">
-            <span className="info-label">OCR Document Service</span>
-            <span className="info-value">{readinessData?.dependencies?.aiService?.status || 'Active (Tesseract OCR)'}</span>
+            <span className="info-label">AI & OCR Service</span>
+            <span className="info-value">{readinessData?.dependencies?.aiService?.status || 'Active (FastAPI + AI)'}</span>
           </li>
           <li className="info-item">
             <span className="info-label">Active User Context</span>
@@ -182,11 +182,11 @@ function App() {
 
       {/* Receipt View Component */}
       {latestReceipt && (
-        <ReceiptView receipt={latestReceipt} authToken={authToken} />
+        <ReceiptView receipt={latestReceipt} authToken={authToken} currentUser={currentUser} />
       )}
 
       <footer className="footer">
-        ExpensEase &bull; Responsive Progressive Web Application &bull; Checkpoint 3 (Receipt Capture & OCR)
+        ExpensEase &bull; Responsive Progressive Web Application &bull; Checkpoint 4 (AI Receipt Understanding)
       </footer>
     </div>
   );
