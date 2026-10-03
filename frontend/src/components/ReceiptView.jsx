@@ -216,7 +216,7 @@ export default function ReceiptView({ receipt, authToken, currentUser, onWorkflo
     setValidatingLoading(true);
     setValidationError(null);
     try {
-      const res = await fetch(`/api/receipts/${receipt.id}/validate`, {
+      const res = await fetch(`/api/receipts/${receipt.id}/validation`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${authToken}`,
@@ -245,14 +245,14 @@ export default function ReceiptView({ receipt, authToken, currentUser, onWorkflo
     const body = {};
 
     if (actionType === 'SUBMIT') {
-      endpoint = `/api/receipts/${receipt.id}/submit`;
+      endpoint = `/api/receipts/${receipt.id}/workflow/submit`;
     } else if (actionType === 'APPROVE') {
-      endpoint = `/api/receipts/${receipt.id}/approve`;
+      endpoint = `/api/receipts/${receipt.id}/workflow/approve`;
     } else if (actionType === 'REJECT') {
-      endpoint = `/api/receipts/${receipt.id}/reject`;
+      endpoint = `/api/receipts/${receipt.id}/workflow/reject`;
       body.reason = reason;
     } else if (actionType === 'REQUEST_CORRECTION') {
-      endpoint = `/api/receipts/${receipt.id}/request-correction`;
+      endpoint = `/api/receipts/${receipt.id}/workflow/request-correction`;
       body.reason = reason;
     }
 

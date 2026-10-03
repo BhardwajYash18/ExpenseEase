@@ -9,7 +9,14 @@ function App() {
   const [backendHealth, setBackendHealth] = useState('checking');
   const [readinessData, setReadinessData] = useState(null);
   const [authToken, setAuthToken] = useState(localStorage.getItem('token') || '');
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (_) {
+      return null;
+    }
+  });
   const [latestReceipt, setLatestReceipt] = useState(null);
   const [receiptsList, setReceiptsList] = useState([]);
   const [loadingReceipts, setLoadingReceipts] = useState(false);
@@ -49,7 +56,7 @@ function App() {
     }
   }
 
-  // Health and session verification
+  // 1. Initial health and readiness check (runs once on mount)
   useEffect(() => {
     fetch('/api/health')
       .then((res) => (res.ok ? res.json() : Promise.reject(`HTTP ${res.status}`)))
@@ -60,22 +67,38 @@ function App() {
       .then((res) => res.json())
       .then((data) => setReadinessData(data))
       .catch(() => setReadinessData(null));
+  }, []);
 
-    if (authToken) {
-      fetch('/api/auth/me', {
-        headers: { Authorization: `Bearer ${authToken}` },
-      })
-        .then((res) => (res.ok ? res.json() : Promise.reject('Invalid token')))
-        .then((data) => {
-          setCurrentUser(data.user);
+  // 2. Session verification when authToken changes
+  useEffect(() => {
+    if (!authToken) {
+      setCurrentUser(null);
+      return;
+    }
+
+    let isMounted = true;
+    fetch('/api/auth/me', {
+      headers: { Authorization: `Bearer ${authToken}` },
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject('Invalid token')))
+      .then((data) => {
+        if (isMounted) {
+          setCurrentUser((prev) => ({ ...(prev || {}), ...data.user }));
           fetchReceipts(authToken);
-        })
-        .catch(() => {
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
           setAuthToken('');
           setCurrentUser(null);
           localStorage.removeItem('token');
-        });
-    }
+          localStorage.removeItem('user');
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, [authToken]);
 
   const handleLogin = async (e, customCreds = null) => {
@@ -98,6 +121,9 @@ function App() {
       setAuthToken(data.token);
       setCurrentUser(data.user);
       localStorage.setItem('token', data.token);
+      if (data.user) {
+        localStorage.setItem('user', JSON.stringify(data.user));
+      }
 
       // Default landing view based on role
       if (data.user.role === 'MANAGER') {
@@ -118,6 +144,7 @@ function App() {
     setAuthToken('');
     setCurrentUser(null);
     localStorage.removeItem('token');
+    localStorage.removeItem('user');
     setLatestReceipt(null);
     setActiveNav('dashboard');
   };
@@ -274,11 +301,11 @@ function App() {
           {currentUser ? (
             <div className="user-profile-card">
               <div className="user-avatar">
-                {currentUser.email.slice(0, 2).toUpperCase()}
+                {((currentUser?.email || currentUser?.role || 'US').slice(0, 2)).toUpperCase()}
               </div>
               <div className="user-meta">
-                <div className="user-name">{currentUser.email}</div>
-                <div className="user-role-badge">{currentUser.role}</div>
+                <div className="user-name">{currentUser?.email || `${currentUser?.role || 'User'} (${(currentUser?.id || '').slice(0, 8)})`}</div>
+                <div className="user-role-badge">{currentUser?.role || 'EMPLOYEE'}</div>
               </div>
               <button
                 type="button"
@@ -658,7 +685,7 @@ function App() {
                       >
                         {receiptsList.map((r) => (
                           <option key={r.id} value={r.id}>
-                            {r.original_filename || r.originalFilename || 'Receipt'} &bull; ID: {r.id.slice(0, 8)}... ({r.workflow_state || r.workflowState || 'DRAFT'})
+                            {r.original_filename || r.originalFilename || 'Receipt'} &bull; ID: {(r.id || '').slice(0, 8)}... ({r.workflow_state || r.workflowState || 'DRAFT'})
                           </option>
                         ))}
                       </select>
