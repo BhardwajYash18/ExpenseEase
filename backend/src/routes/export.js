@@ -2,8 +2,12 @@ const express = require('express');
 const authenticate = require('../middleware/authenticate');
 const requireRole = require('../middleware/requireRole');
 const exportController = require('../controllers/exportController');
+const { validateUuidParam } = require('../utils/validationUtils');
 
 const router = express.Router();
+
+// Parameter validation
+router.param('id', validateUuidParam('id'));
 
 // All export and integration operations require authentication and the FINANCE role
 // per AGENTS.md Section 13, 20 and docs/PRD.md Section 9.3, FR-11.

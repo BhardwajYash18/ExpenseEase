@@ -1,5 +1,6 @@
 const csvExportService = require('../services/csvExportService');
 const integrationService = require('../services/integrations/integrationService');
+const { isValidUuid } = require('../utils/validationUtils');
 
 /**
  * Export & Integration Controller (Checkpoint 9)
@@ -63,6 +64,13 @@ async function exportFinanceBatchCsv(req, res, next) {
 async function exportCsv(req, res, next) {
   try {
     const { journalEntryId, batchId } = req.query;
+
+    if (journalEntryId && !isValidUuid(journalEntryId)) {
+      return res.status(400).json({ error: { message: 'Invalid query parameter: journalEntryId must be a valid UUID' } });
+    }
+    if (batchId && !isValidUuid(batchId)) {
+      return res.status(400).json({ error: { message: 'Invalid query parameter: batchId must be a valid UUID' } });
+    }
 
     let result;
     if (journalEntryId) {

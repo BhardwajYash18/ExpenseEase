@@ -2,11 +2,11 @@
 
 ExpensEase is a B2B expense-management platform for small and mid-sized businesses (SMBs). The application is delivered as a single responsive Progressive Web Application (PWA) for desktop and mobile browsers, backed by a Node.js API orchestrator, a dedicated Python document processing service, and PostgreSQL.
 
-> **Current Status**: `CHECKPOINT 9 — CSV EXPORT + QUICKBOOKS/XERO INTEGRATION POINTS COMPLETED`
+> **Current Status**: `CHECKPOINT 10 — SECURITY HARDENING + COMPREHENSIVE TESTING COMPLETED`
 >
-> Checkpoints 0 through 9 are fully implemented, verified, and tested. The project foundation, deterministic database migrations, PostgreSQL Row-Level Security (RLS) multi-tenancy model, bcrypt password hashing, HS256-pinned JWT authentication, strict RBAC authorization, receipt capture & Tesseract OCR pipeline, AI receipt understanding with provider abstraction, immutable dual-field provenance, deterministic effective values, deterministic policy engine, decimal-safe monetary arithmetic, multi-signal tenant-scoped duplicate detection, server-enforced approval workflow state machine (`DRAFT`, `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, `CORRECTION_REQUESTED`), manager decisions with mandatory reasons, separation of duties, pessimistic concurrency control, append-only workflow audit trail, atomic all-or-nothing Finance Batch creation, deterministic integer-cents batch totals, batch status management (`OPEN`, `REVIEWED`), expense addition/removal, finance review completion, append-only finance audit trail, dedicated PWA Finance Batch management, deterministic double-entry bookkeeping (`TOTAL DEBITS = TOTAL CREDITS`), category-to-GL account mappings, reviewable journal entries (`DRAFT`, `FINALIZED`), RFC 4180 CSV export with formula injection mitigation, QuickBooks Online and Xero provider integration point boundaries, and append-only export audit logging are complete.
+> Checkpoints 0 through 10 are fully implemented, verified, and tested. The project foundation, deterministic database migrations, PostgreSQL Row-Level Security (RLS) multi-tenancy model, bcrypt password hashing, HS256-pinned JWT authentication, strict RBAC authorization, receipt capture & Tesseract OCR pipeline, AI receipt understanding with provider abstraction, immutable dual-field provenance, deterministic effective values, deterministic policy engine, decimal-safe monetary arithmetic, multi-signal tenant-scoped duplicate detection, server-enforced approval workflow state machine (`DRAFT`, `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, `CORRECTION_REQUESTED`), manager decisions with mandatory reasons, separation of duties, pessimistic concurrency control, append-only workflow audit trail, atomic all-or-nothing Finance Batch creation, deterministic integer-cents batch totals, batch status management (`OPEN`, `REVIEWED`), expense addition/removal, finance review completion, append-only finance audit trail, dedicated PWA Finance Batch management, deterministic double-entry bookkeeping (`TOTAL DEBITS = TOTAL CREDITS`), category-to-GL account mappings, reviewable journal entries (`DRAFT`, `FINALIZED`), RFC 4180 CSV export with formula injection mitigation, QuickBooks Online and Xero provider integration point boundaries, append-only export audit logging, server-wide security hardening (strict UUID parameter & body validation, RLS boundary defense, file path traversal mitigation, magic byte validation, null-byte sanitization, database error masking, 1MB payload limits), a 50-test dedicated security suite, and a 13-test full-lifecycle end-to-end integration suite are complete.
 >
-> In accordance with `AGENTS.md`, later-stage activities (Checkpoint 10 Security & Testing Audit) are intentionally scheduled for subsequent checkpoints.
+> In accordance with `AGENTS.md`, the next phase is Checkpoint 11 (Final End-to-End Audit).
 
 ---
 
@@ -297,6 +297,29 @@ ExpensEase utilizes a **four-service application architecture**:
   - Integrated interactive Integration Payload Modal showing transformed JSON with copy-to-clipboard functionality and provider status.
   - Added "Integrations & Audit" tab with real-time audit trail and provider status disclosures.
 
+### Checkpoint 10 — Security Hardening & Comprehensive Testing
+- [x] Comprehensive Security & Threat Model Audit:
+  - Audited against OWASP Top 10, broken authentication, IDOR, tenant isolation bypass, role escalation, mass assignment, path traversal, magic byte spoofing, prompt injection, CSV formula injection, floating-point arithmetic errors, and database error leakage.
+- [x] Multi-Layer Server Hardening:
+  - **Strict Input Validation**: Implemented `validateUuidParam` and `isValidUuid` middleware across all routes (`receipts`, `financeBatches`, `journalEntries`, `export`, `accountMappings`), query parameters, request bodies (`receiptIds`), and DB tenant context (`withTenantContext`).
+  - **Database Error Classification & Masking**: Extended `errorHandler.js` to catch PostgreSQL error codes (`22P02` invalid text representation, `22001` value too long, `23505` unique violation, `23503` foreign key violation, `22021` character not in repertoire) returning client-safe 400/409 responses, and masking internal server errors and stack traces in production.
+  - **Payload Size & CORS Protections**: Enforced 1MB request body limits in Express and environment-configurable CORS origins.
+  - **Storage Path Traversal Protection**: Implemented canonical path boundary verification in `storageService.js` (`resolveSafePath`).
+  - **File Upload Hardening**: Detected null bytes (`\0`) and path separators in uploaded filenames, sanitized filenames, and mapped busboy multipart parsing errors to clean HTTP 400 responses.
+- [x] Dedicated Security Test Suite (`backend/tests/security.test.js` — 50 tests):
+  - **AUTH**: Missing token, malformed header, invalid JWT, expired JWT, tampered signature, algorithm confusion (`none`), generic credentials error, zero password hash exposure.
+  - **RBAC**: EMPLOYEE restricted from workflow approval/rejection, finance batches, journal entries, CSV exports; MANAGER restricted from finance operations; role spoofing via body/query/headers ignored.
+  - **TENANT / RLS**: Cross-tenant isolation across receipts, files, OCR, extractions, batches, journal entries, and exports (all return 404/400 with zero cross-tenant leakage).
+  - **INPUT**: Malformed UUIDs in URL params, request bodies, and query params return 400 Bad Request; oversized payloads (>1MB) rejected.
+  - **FILE**: MIME spoofing, magic byte validation, storage path traversal defense, null-byte uploads, empty uploads rejected.
+  - **WORKFLOW**: Invalid transitions (draft approval rejected), separation of duties (submitter cannot self-approve), mandatory rejection/correction reasons enforced.
+  - **ACCOUNTING**: Imbalanced journal entries rejected (debits != credits), duplicate journal entry generation prevented, finalized entries locked from refinalization.
+  - **EXPORT**: Formula injection trigger characters (`=`, `+`, `-`, `@`) prepended with `'`, unfinalized drafts rejected from export.
+  - **AI / OCR**: Prompt injection payload in OCR does not alter workflow state or escalate role.
+- [x] Full-Lifecycle End-to-End Integration Suite (`backend/tests/e2e.test.js` — 13 tests):
+  - Validates end-to-end golden path: Auth → Upload → OCR → AI Extraction → Human Confirmation → Policy Check → Submission → Manager Approval → Finance Batch → Finance Review → Journal Entry Generation & Balance Validation → Finalize → CSV Export → QuickBooks & Xero Integration Points.
+  - Validates cross-tenant isolation at every stage of the lifecycle.
+
 ## Repository Structure
 
 ```
@@ -539,7 +562,7 @@ npm run dev:frontend
 
 All test suites run in automated CI-ready test runners:
 
-### Backend Tests (205 tests across 14 suites)
+### Backend Tests (268 tests across 16 suites)
 ```bash
 cd backend
 npm test
@@ -556,6 +579,8 @@ Tests cover:
 - Checkpoint 7 Finance Batches: atomic all-or-nothing batch creation, approved-only inclusion, duplicate prevention, item addition/removal, integer-cent arithmetic, review completion, and audit logging (`financeBatch.test.js`)
 - Checkpoint 8 Journal Entries & Accounting: deterministic category mapping, integer-cent double-entry line calculation, balance validation (`TOTAL DEBITS = TOTAL CREDITS`), reviewable draft state, finalization, duplicate generation prevention, and append-only audit trail (`journalEntry.test.js`)
 - Checkpoint 9 CSV Export & Accounting Integrations: finalized-only eligibility, RFC 4180 CSV serialization, formula injection mitigation, read-only safety, tenant isolation (404), empty dataset handling, QuickBooks Online payload transformation, Xero ManualJournals payload transformation, provider status, and append-only export audit logging (`export.test.js`)
+- Checkpoint 10 Security Hardening & Vulnerability Defenses (`security.test.js` — 50 tests): JWT tampering, algorithm confusion, expired tokens, missing auth, RBAC authorization boundaries, multi-tenant RLS isolation across all entities, UUID and payload input validation, file upload magic bytes and traversal defenses, workflow state machine security and separation of duties, double-entry accounting balance enforcement, CSV formula injection neutralization, and OCR prompt injection resilience.
+- Checkpoint 10 Full-Lifecycle End-to-End Integration (`e2e.test.js` — 13 tests): Complete lifecycle validation from authentication to receipt capture, OCR, AI extraction, confirmation, policy check, submission, manager approval, finance batching, review, balanced journal entry generation, finalization, CSV export, accounting integration payload generation, and cross-tenant isolation at every step.
 
 ### AI / Document Service Tests (12 tests across 3 modules)
 ```bash
@@ -589,4 +614,4 @@ Verifies migration runner detects zero pending migrations on already-migrated da
 
 Following the incremental development process in `AGENTS.md`, work will proceed to:
 
-- **Checkpoint 10 — Security + Testing**: Dedicated security and testing audit checking authentication, RBAC, IDOR, tenant isolation, RLS, SQL injection, file uploads, path traversal, secrets management, API security, AI prompt injection, and accounting integrity.
+- **Checkpoint 11 — Final End-to-End Audit**: Comprehensive verification of the complete ExpensEase workflow across all stages and compilation of the final traceability and audit report.

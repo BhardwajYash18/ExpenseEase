@@ -51,6 +51,30 @@ function generateStorageKey(tenantId, mimeType) {
 }
 
 /**
+ * Safely resolve a storage path and prevent path traversal outside storageDir.
+ *
+ * @param {string} storageKey
+ * @returns {string} canonical absolute path
+ */
+function resolveSafePath(storageKey) {
+  if (!storageKey || typeof storageKey !== 'string') {
+    const err = new Error('Invalid storage key: must be a non-empty string');
+    err.status = 400;
+    throw err;
+  }
+  const baseDir = path.resolve(config.receipt.storageDir);
+  const targetPath = path.resolve(baseDir, storageKey);
+  const normalizedBase = baseDir.endsWith(path.sep) ? baseDir : baseDir + path.sep;
+
+  if (!targetPath.startsWith(normalizedBase)) {
+    const err = new Error('Invalid storage key: path traversal detected');
+    err.status = 400;
+    throw err;
+  }
+  return targetPath;
+}
+
+/**
  * Store a file buffer to local filesystem.
  *
  * @param {string} storageKey - Server-generated storage key
@@ -60,7 +84,7 @@ function generateStorageKey(tenantId, mimeType) {
 async function storeFile(storageKey, fileBuffer) {
   ensureStorageDir();
 
-  const fullPath = path.join(config.receipt.storageDir, storageKey);
+  const fullPath = resolveSafePath(storageKey);
   const dir = path.dirname(fullPath);
 
   // Ensure tenant subdirectory exists
@@ -81,7 +105,7 @@ async function storeFile(storageKey, fileBuffer) {
  * @throws {Error} if file does not exist
  */
 async function readFile(storageKey) {
-  const fullPath = path.join(config.receipt.storageDir, storageKey);
+  const fullPath = resolveSafePath(storageKey);
   return fs.promises.readFile(fullPath);
 }
 
@@ -92,8 +116,12 @@ async function readFile(storageKey) {
  * @returns {boolean}
  */
 function fileExists(storageKey) {
-  const fullPath = path.join(config.receipt.storageDir, storageKey);
-  return fs.existsSync(fullPath);
+  try {
+    const fullPath = resolveSafePath(storageKey);
+    return fs.existsSync(fullPath);
+  } catch (_) {
+    return false;
+  }
 }
 
 /**
@@ -103,7 +131,7 @@ function fileExists(storageKey) {
  * @returns {Promise<void>}
  */
 async function deleteFile(storageKey) {
-  const fullPath = path.join(config.receipt.storageDir, storageKey);
+  const fullPath = resolveSafePath(storageKey);
   if (fs.existsSync(fullPath)) {
     await fs.promises.unlink(fullPath);
   }
@@ -111,6 +139,7 @@ async function deleteFile(storageKey) {
 
 module.exports = {
   generateStorageKey,
+  resolveSafePath,
   storeFile,
   readFile,
   fileExists,

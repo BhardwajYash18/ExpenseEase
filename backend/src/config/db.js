@@ -50,9 +50,11 @@ async function checkConnection() {
  * @param {string} tenantId - UUID of the authenticated tenant
  * @param {Function} callback - Async function receiving the scoped db client
  */
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function withTenantContext(tenantId, callback) {
-  if (!tenantId) {
-    throw new Error('[Multi-Tenancy] Tenant context requires a valid tenant ID');
+  if (!tenantId || typeof tenantId !== 'string' || !UUID_REGEX.test(tenantId)) {
+    throw new Error('[Multi-Tenancy] Tenant context requires a valid UUID tenant ID');
   }
 
   const client = await pool.connect();

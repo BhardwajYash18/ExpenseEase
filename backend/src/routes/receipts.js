@@ -4,8 +4,12 @@ const authenticate = require('../middleware/authenticate');
 const requireRole = require('../middleware/requireRole');
 const receiptController = require('../controllers/receiptController');
 const config = require('../config/env');
+const { validateUuidParam } = require('../utils/validationUtils');
 
 const router = express.Router();
+
+// Validate :id parameter across all receipt routes
+router.param('id', validateUuidParam('id'));
 
 // Configure multer for in-memory file handling
 // Files are stored to disk by storageService, not by multer
@@ -33,6 +37,11 @@ function handleMulterError(err, req, res, next) {
     }
     return res.status(400).json({
       error: { message: 'File upload error' },
+    });
+  }
+  if (err && err.message && (err.message.includes('Malformed part header') || err.message.includes('Unexpected end of form'))) {
+    return res.status(400).json({
+      error: { message: 'Malformed file upload: invalid filename or multipart header' },
     });
   }
   next(err);

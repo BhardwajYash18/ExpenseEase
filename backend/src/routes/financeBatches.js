@@ -2,8 +2,14 @@ const express = require('express');
 const authenticate = require('../middleware/authenticate');
 const requireRole = require('../middleware/requireRole');
 const financeBatchController = require('../controllers/financeBatchController');
+const { validateUuidParam } = require('../utils/validationUtils');
 
 const router = express.Router();
+
+// Parameter validation
+router.param('id', validateUuidParam('id'));
+router.param('batchId', validateUuidParam('batchId'));
+router.param('receiptId', validateUuidParam('receiptId'));
 
 // All finance batch operations require authentication and the FINANCE role
 // per AGENTS.md Section 13 and docs/PRD.md Section 9.3.

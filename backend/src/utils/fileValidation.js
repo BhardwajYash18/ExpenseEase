@@ -40,7 +40,15 @@ function validateReceiptFile(file) {
     return { valid: false, error: 'Uploaded file is empty' };
   }
 
-  // 2. MIME type validation
+  // 2. Filename safety check
+  if (file.originalname && (file.originalname.includes('\0') || file.originalname.includes('../') || file.originalname.includes('..\\'))) {
+    return {
+      valid: false,
+      error: 'Invalid filename: null bytes and path traversal sequences are prohibited',
+    };
+  }
+
+  // 3. MIME type validation
   const { allowedMimeTypes } = config.receipt;
   if (!allowedMimeTypes.includes(file.mimetype)) {
     return {
@@ -49,7 +57,7 @@ function validateReceiptFile(file) {
     };
   }
 
-  // 3. File size validation
+  // 4. File size validation
   const { maxFileSizeBytes } = config.receipt;
   if (file.size > maxFileSizeBytes) {
     const maxMB = Math.round(maxFileSizeBytes / (1024 * 1024));
@@ -59,7 +67,7 @@ function validateReceiptFile(file) {
     };
   }
 
-  // 4. Magic byte validation — verify actual file content matches declared MIME type
+  // 5. Magic byte validation — verify actual file content matches declared MIME type
   const signatures = MAGIC_BYTES[file.mimetype];
   if (signatures) {
     const headerBytes = file.buffer.subarray(0, 12);
@@ -99,8 +107,9 @@ function sanitizeFilename(originalName) {
   if (!originalName || typeof originalName !== 'string') {
     return 'unnamed';
   }
-  // Remove path separators and control characters
+  // Remove null bytes, path separators and control characters
   return originalName
+    .replace(/\0/g, '')
     .replace(/[/\\]/g, '_')         // Replace path separators
     .replace(/[^\x20-\x7E]/g, '_')  // Replace non-printable/non-ASCII
     .replace(/\.\./g, '_')          // Prevent directory traversal sequences

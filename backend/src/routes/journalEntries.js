@@ -2,8 +2,13 @@ const express = require('express');
 const authenticate = require('../middleware/authenticate');
 const requireRole = require('../middleware/requireRole');
 const journalEntryController = require('../controllers/journalEntryController');
+const { validateUuidParam } = require('../utils/validationUtils');
 
 const router = express.Router();
+
+// Parameter validation
+router.param('id', validateUuidParam('id'));
+router.param('batchId', validateUuidParam('batchId'));
 
 // All journal entry operations require authentication and the FINANCE role
 // per AGENTS.md Section 13, 15 and docs/PRD.md Section 9.3, FR-10.

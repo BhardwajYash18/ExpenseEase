@@ -1,4 +1,5 @@
 const journalEntryService = require('../services/journalEntryService');
+const { isValidUuid } = require('../utils/validationUtils');
 
 /**
  * Journal Entry Controller (Checkpoint 8)
@@ -73,6 +74,13 @@ async function generateJournalEntry(req, res, next) {
       return res.status(400).json({
         success: false,
         error: { message: 'batchId is required to generate a journal entry' },
+      });
+    }
+
+    if (!isValidUuid(batchId)) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Invalid batchId format: must be a valid UUID' },
       });
     }
 

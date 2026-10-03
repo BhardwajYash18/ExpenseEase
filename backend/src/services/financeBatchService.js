@@ -1,5 +1,6 @@
 const { withTenantContext } = require('../config/db');
 const { parseToCents } = require('./policy/decimalUtils');
+const { isValidUuid } = require('../utils/validationUtils');
 
 /**
  * Finance Batch Service (Checkpoint 7)
@@ -304,6 +305,14 @@ async function createBatch(tenantId, userId, userRole, { receiptIds }) {
     throw error;
   }
 
+  for (const id of receiptIds) {
+    if (!isValidUuid(id)) {
+      const error = new Error(`Validation failed: Invalid receipt ID format: '${id}' is not a valid UUID`);
+      error.status = 400;
+      throw error;
+    }
+  }
+
   // Prevent duplicate inclusion of the same expense within the same batch (PRD FR-09.3)
   const uniqueReceiptIds = [...new Set(receiptIds)];
   if (uniqueReceiptIds.length !== receiptIds.length) {
@@ -450,6 +459,18 @@ async function addExpenseToBatch(tenantId, userId, userRole, batchId, receiptId)
     throw error;
   }
 
+  if (!isValidUuid(batchId)) {
+    const error = new Error(`Validation failed: Invalid batch ID format: '${batchId}' is not a valid UUID`);
+    error.status = 400;
+    throw error;
+  }
+
+  if (!isValidUuid(receiptId)) {
+    const error = new Error(`Validation failed: Invalid receipt ID format: '${receiptId}' is not a valid UUID`);
+    error.status = 400;
+    throw error;
+  }
+
   return withTenantContext(tenantId, async (client) => {
     await client.query('BEGIN');
 
@@ -578,6 +599,18 @@ async function removeExpenseFromBatch(tenantId, userId, userRole, batchId, recei
   if (userRole !== 'FINANCE') {
     const error = new Error('Forbidden: Only FINANCE role can modify finance batches');
     error.status = 403;
+    throw error;
+  }
+
+  if (!isValidUuid(batchId)) {
+    const error = new Error(`Validation failed: Invalid batch ID format: '${batchId}' is not a valid UUID`);
+    error.status = 400;
+    throw error;
+  }
+
+  if (!isValidUuid(receiptId)) {
+    const error = new Error(`Validation failed: Invalid receipt ID format: '${receiptId}' is not a valid UUID`);
+    error.status = 400;
     throw error;
   }
 
