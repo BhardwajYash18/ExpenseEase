@@ -7,6 +7,7 @@ const receiptRoutes = require('./routes/receipts');
 const financeBatchRoutes = require('./routes/financeBatches');
 const journalEntryRoutes = require('./routes/journalEntries');
 const accountMappingRoutes = require('./routes/accountMappings');
+const exportRoutes = require('./routes/export');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -23,6 +24,7 @@ app.use('/api/receipts', receiptRoutes);
 app.use('/api/finance-batches', financeBatchRoutes);
 app.use('/api/journal-entries', journalEntryRoutes);
 app.use('/api/account-mappings', accountMappingRoutes);
+app.use('/api/export', exportRoutes);
 
 
 // 404 handler for unrecognized routes

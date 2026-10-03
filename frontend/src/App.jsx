@@ -118,7 +118,7 @@ function App() {
       <div className="card" style={{ marginBottom: '20px' }}>
         <div className="status-badge ok">
           <span className="status-indicator"></span>
-          <span>Checkpoint 8 — Journal Entries / Deterministic Accounting</span>
+          <span>Checkpoint 9 — CSV Export + QuickBooks/Xero Integration Points</span>
         </div>
 
         <ul className="info-list">
@@ -215,7 +215,7 @@ function App() {
               onClick={() => setFinanceView('accounting')}
               style={{ flex: 1, padding: '10px 16px', fontSize: '0.9rem' }}
             >
-              Journal Entries &amp; Accounting (Checkpoint 8)
+              Journal Entries &amp; Integrations (CP8 &amp; CP9)
             </button>
           </div>
 

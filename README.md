@@ -2,11 +2,11 @@
 
 ExpensEase is a B2B expense-management platform for small and mid-sized businesses (SMBs). The application is delivered as a single responsive Progressive Web Application (PWA) for desktop and mobile browsers, backed by a Node.js API orchestrator, a dedicated Python document processing service, and PostgreSQL.
 
-> **Current Status**: `CHECKPOINT 7 — FINANCE BATCHES COMPLETED`
+> **Current Status**: `CHECKPOINT 9 — CSV EXPORT + QUICKBOOKS/XERO INTEGRATION POINTS COMPLETED`
 >
-> Checkpoints 0, 1, 2, 3, 4, 5, 6, and 7 are fully implemented, verified, and tested. The project foundation, deterministic database migrations, PostgreSQL Row-Level Security (RLS) multi-tenancy model, bcrypt password hashing, HS256-pinned JWT authentication, strict RBAC authorization, receipt capture & Tesseract OCR pipeline, AI receipt understanding with provider abstraction, immutable dual-field provenance, deterministic effective values, deterministic policy engine, decimal-safe monetary arithmetic, multi-signal tenant-scoped duplicate detection, server-enforced approval workflow state machine (`DRAFT`, `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, `CORRECTION_REQUESTED`), manager decisions with mandatory reasons, separation of duties, pessimistic concurrency control, append-only workflow audit trail, atomic all-or-nothing Finance Batch creation, deterministic integer-cents batch totals, batch status management (`OPEN`, `REVIEWED`), expense addition/removal (leaving approval state intact), finance review completion, append-only finance audit trail, and dedicated PWA Finance Batch management interface are complete.
+> Checkpoints 0 through 9 are fully implemented, verified, and tested. The project foundation, deterministic database migrations, PostgreSQL Row-Level Security (RLS) multi-tenancy model, bcrypt password hashing, HS256-pinned JWT authentication, strict RBAC authorization, receipt capture & Tesseract OCR pipeline, AI receipt understanding with provider abstraction, immutable dual-field provenance, deterministic effective values, deterministic policy engine, decimal-safe monetary arithmetic, multi-signal tenant-scoped duplicate detection, server-enforced approval workflow state machine (`DRAFT`, `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, `CORRECTION_REQUESTED`), manager decisions with mandatory reasons, separation of duties, pessimistic concurrency control, append-only workflow audit trail, atomic all-or-nothing Finance Batch creation, deterministic integer-cents batch totals, batch status management (`OPEN`, `REVIEWED`), expense addition/removal, finance review completion, append-only finance audit trail, dedicated PWA Finance Batch management, deterministic double-entry bookkeeping (`TOTAL DEBITS = TOTAL CREDITS`), category-to-GL account mappings, reviewable journal entries (`DRAFT`, `FINALIZED`), RFC 4180 CSV export with formula injection mitigation, QuickBooks Online and Xero provider integration point boundaries, and append-only export audit logging are complete.
 >
-> In accordance with `AGENTS.md`, later-stage accounting workflows (Journal Entries in CP8, and CSV/QuickBooks/Xero in CP9) are intentionally deferred to subsequent checkpoints.
+> In accordance with `AGENTS.md`, later-stage activities (Checkpoint 10 Security & Testing Audit) are intentionally scheduled for subsequent checkpoints.
 
 ---
 
@@ -262,9 +262,40 @@ ExpensEase utilizes a **four-service application architecture**:
   - Account Mappings configuration manager allowing Finance users to view and add/update category-to-GL account mappings.
   - "Generate Journal Entry" one-click action directly on `REVIEWED` Finance Batches.
 
-
-
----
+### Checkpoint 9 — CSV Export + QuickBooks/Xero Integration Points
+- [x] Applied deterministic SQL migration `009_create_export_audit.sql`:
+  - `export_audit_logs` table (`id` UUID PK, `tenant_id` FK, `actor_id` FK, `actor_role VARCHAR(32)`, `export_type VARCHAR(32)` with check `('CSV', 'QUICKBOOKS', 'XERO')`, `resource_type VARCHAR(32)` with check `('JOURNAL_ENTRY', 'FINANCE_BATCH', 'ALL_JOURNAL_ENTRIES')`, `resource_id UUID`, `record_count INTEGER`, `details TEXT`, `created_at TIMESTAMPTZ`).
+  - Performance indexes on `tenant_id`, `actor_id`, `export_type`, `resource_id`, and `created_at`.
+  - Forced PostgreSQL RLS with `tenant_isolation_policy` using `app.current_tenant_id`.
+  - Least-privilege permissions granted to `expensease_app`: append-only `SELECT, INSERT`.
+- [x] Implemented robust CSV Export service (`backend/src/services/csvExportService.js`):
+  - Strictly exports already-validated, deterministic CP8 `FINALIZED` journal entries. Unfinalized `DRAFT` entries are rejected with HTTP 400 (AGENTS.md Sec 15; PRD FR-10.7).
+  - Deterministic CSV column structure: `journal_entry_id,finance_batch_id,line_order,account,debit_amount,credit_amount,description,receipt_id,entry_date` (implementation choice derived directly from CP8 double-entry models).
+  - Proper RFC 4180 serialization: escaping of commas, double quotes (`""`), and newlines.
+  - Formula injection mitigation: text fields starting with formula operators (`=`, `+`, `-`, `@`) prepended with `'` while keeping numerical debit/credit values as valid decimals.
+  - Read-only export safety: zero mutation to journal entries, lines, batches, or workflows.
+  - Empty dataset handling: returns valid CSV with header row and records audit log count of 0.
+- [x] Implemented clean provider adapter boundaries for external accounting integrations (`backend/src/services/integrations/`):
+  - `AccountingIntegrationAdapter`: Base abstract contract requiring finalized status and integer-cent balance before transformation.
+  - `QuickBooksAdapter`: Transforms finalized journal entries into QuickBooks Online `JournalEntry` entity schema (`DocNumber`, `TxnDate`, `Line` array with `JournalEntryLineDetail`, `PostingType`, `AccountRef`).
+  - `XeroAdapter`: Transforms finalized journal entries into Xero `ManualJournals` entity schema (`ManualJournalID`, `Date`, `Status: POSTED`, `JournalLines` array with positive debits and negative credits balancing to 0.00).
+  - `integrationService.js`: Orchestrates providers, verifies server-side `FINANCE` authorization and RLS, returns `INTEGRATION_POINT_READY` status, and logs audit events.
+  - No real QuickBooks/Xero credentials required, no fake tokens stored, and zero external network calls made.
+- [x] Mounted Export & Integration API routes (`backend/src/routes/export.js` & `backend/src/controllers/exportController.js`):
+  - `GET /api/export/csv`
+  - `GET /api/export/journal-entries/:id/csv`
+  - `GET /api/export/finance-batches/:id/csv`
+  - `GET /api/export/integrations`
+  - `POST /api/export/integrations/quickbooks/:id`
+  - `POST /api/export/integrations/xero/:id`
+  - `GET /api/export/audit-logs`
+  - Server-side RBAC: restricted exclusively to `FINANCE` role (`EMPLOYEE` and `MANAGER` receive 403 Forbidden).
+- [x] Enhanced React PWA interface (`JournalEntryView.jsx`, `App.jsx`):
+  - Added "CSV" export action button on finalized journal entry rows.
+  - Added "Export All Finalized CSV" button for tenant-wide export.
+  - Added "Export CSV", "QuickBooks", and "Xero" actions in the Journal Entry Detail view.
+  - Integrated interactive Integration Payload Modal showing transformed JSON with copy-to-clipboard functionality and provider status.
+  - Added "Integrations & Audit" tab with real-time audit trail and provider status disclosures.
 
 ## Repository Structure
 
@@ -274,8 +305,8 @@ ExpensEase/
 ├── frontend/                     # React Responsive PWA
 │   ├── public/                   # Static assets, manifest.json, sw.js
 │   ├── src/
-│   │   ├── components/           # ReceiptCapture.jsx, ReceiptView.jsx
-│   │   ├── App.jsx               # Main application shell with auth & receipt flows
+│   │   ├── components/           # ReceiptCapture.jsx, ReceiptView.jsx, FinanceBatchView.jsx, JournalEntryView.jsx
+│   │   ├── App.jsx               # Main application shell with auth & role workflows
 │   │   ├── index.css             # Design system, responsive layout & button styling
 │   │   └── main.jsx              # PWA mount & service worker registration
 │   ├── scripts/
@@ -287,32 +318,42 @@ ExpensEase/
 ├── backend/                      # Node.js + Express REST API
 │   ├── src/
 │   │   ├── config/               # env.js (fail-fast validation) & db.js (RLS context)
-│   │   ├── controllers/          # authController.js, receiptController.js
+│   │   ├── controllers/          # auth, receipt, financeBatch, journalEntry, accountMapping, export
 │   │   ├── middleware/           # authenticate.js, requireRole.js, errorHandler.js
-│   │   ├── routes/               # health.js, auth.js, receipts.js
-│   │   ├── services/             # authService.js, storageService.js, receiptService.js
+│   │   ├── routes/               # health, auth, receipts, financeBatches, journalEntries, accountMappings, export
+│   │   ├── services/             # auth, storage, receipt, extraction, validation, workflow, financeBatch,
+│   │   │                         # journalEntry, accountMapping, csvExportService, integrations/
+│   │   │   └── integrations/     # accountingIntegrationAdapter, quickBooksAdapter, xeroAdapter, integrationService
 │   │   ├── utils/                # fileValidation.js (magic bytes & sanitization)
 │   │   └── app.js                # Express app setup and route mounting
-│   ├── tests/                    # Jest test suites (receipts, auth, multiTenancy, database, etc.)
+│   ├── tests/                    # Jest test suites (auth, database, duplicate, extraction, financeBatch,
+│   │                             # health, journalEntry, multiTenancy, policy, readiness, receipts, validation,
+│   │                             # workflow, export)
 │   ├── Dockerfile
 │   └── package.json
 │
 ├── ai-service/                   # Python + FastAPI Document & OCR Service
 │   ├── app/
-│   │   ├── api/                  # health.py, ocr.py
+│   │   ├── api/                  # health.py, ocr.py, receipt_understanding.py
 │   │   ├── core/                 # config.py (Pydantic settings)
 │   │   ├── processors/           # image_preprocessor.py (OpenCV / Pillow)
-│   │   ├── services/             # ocr_service.py (Tesseract OCR extraction)
+│   │   ├── services/             # ocr_service.py (Tesseract OCR), receipt_understanding_service.py
 │   │   └── main.py               # FastAPI application entry point
-│   ├── tests/                    # Pytest test suite (test_ocr.py, test_health.py)
+│   ├── tests/                    # Pytest test suite (test_ocr.py, test_health.py, test_receipt_understanding.py)
 │   ├── Dockerfile                # Installs tesseract-ocr system packages
 │   └── requirements.txt
 │
 ├── database/                     # Database scripts & schema
-│   ├── migrations/               # Deterministic SQL migrations:
+│   ├── migrations/               # Deterministic SQL migrations (001 through 009):
 │   │   ├── 001_create_tenants_and_users.sql
 │   │   ├── 002_create_app_role.sql
-│   │   └── 003_create_receipts.sql
+│   │   ├── 003_create_receipts.sql
+│   │   ├── 004_create_extractions.sql
+│   │   ├── 005_create_policies.sql
+│   │   ├── 006_create_workflows.sql
+│   │   ├── 007_create_finance_batches.sql
+│   │   ├── 008_create_journal_entries.sql
+│   │   └── 009_create_export_audit.sql
 │   └── migrator.js               # SQL migration runner
 │
 ├── docs/                         # Documentation
@@ -462,10 +503,35 @@ npm run dev:frontend
 | **Backend** | `POST` | `/api/receipts/:id/extraction` | Bearer Token | `EMPLOYEE`, `MANAGER`, `FINANCE` | Trigger AI receipt understanding and structured field extraction |
 | **Backend** | `GET` | `/api/receipts/:id/extraction` | Bearer Token | `EMPLOYEE`, `MANAGER`, `FINANCE` | Get structured extraction, line items, and deterministic effective values |
 | **Backend** | `PUT` | `/api/receipts/:id/extraction` | Bearer Token | `EMPLOYEE`, `MANAGER`, `FINANCE` | Human confirmation of values (preserves immutable AI extraction) |
+| **Backend** | `POST` | `/api/receipts/:id/validate` | Bearer Token | Any | Deterministic policy validation & duplicate similarity check |
+| **Backend** | `POST` | `/api/receipts/:id/submit` | Bearer Token | `EMPLOYEE` | Submit expense into approval workflow (`PENDING_APPROVAL`) |
+| **Backend** | `POST` | `/api/receipts/:id/approve` | Bearer Token | `MANAGER` | Approve expense (`APPROVED`) |
+| **Backend** | `POST` | `/api/receipts/:id/reject` | Bearer Token | `MANAGER` | Reject expense (`REJECTED`) with mandatory reason |
+| **Backend** | `POST` | `/api/receipts/:id/request-correction` | Bearer Token | `MANAGER` | Request correction (`CORRECTION_REQUESTED`) with mandatory reason |
+| **Backend** | `GET` | `/api/finance-batches/eligible-expenses`| Bearer Token | `FINANCE` | List approved expenses eligible for batching |
+| **Backend** | `GET` | `/api/finance-batches` | Bearer Token | `FINANCE` | List all Finance Batches for tenant |
+| **Backend** | `POST` | `/api/finance-batches` | Bearer Token | `FINANCE` | Atomically create Finance Batch with approved expenses |
+| **Backend** | `GET` | `/api/finance-batches/:id` | Bearer Token | `FINANCE` | Get batch details, included expenses, and audit history |
+| **Backend** | `POST` | `/api/finance-batches/:id/items` | Bearer Token | `FINANCE` | Add approved expense to OPEN batch |
+| **Backend** | `DELETE`| `/api/finance-batches/:id/items/:receiptId` | Bearer Token | `FINANCE` | Remove expense from OPEN batch (leaves expense approved) |
+| **Backend** | `POST` | `/api/finance-batches/:id/review` | Bearer Token | `FINANCE` | Mark Finance Batch as REVIEWED |
+| **Backend** | `GET` | `/api/account-mappings` | Bearer Token | `FINANCE` | List all category-to-GL account mappings |
+| **Backend** | `POST` | `/api/account-mappings` | Bearer Token | `FINANCE` | Create or update category-to-GL account mapping |
+| **Backend** | `GET` | `/api/journal-entries` | Bearer Token | `FINANCE` | List all journal entries for tenant |
+| **Backend** | `POST` | `/api/journal-entries/generate` | Bearer Token | `FINANCE` | Generate balanced journal entry from reviewed Finance Batch |
+| **Backend** | `GET` | `/api/journal-entries/:id` | Bearer Token | `FINANCE` | Get journal entry with ordered lines and audit history |
+| **Backend** | `POST` | `/api/journal-entries/:id/finalize` | Bearer Token | `FINANCE` | Finalize journal entry (validates TOTAL DEBITS = TOTAL CREDITS) |
+| **Backend** | `GET` | `/api/export/csv` | Bearer Token | `FINANCE` | Export CSV for tenant, batch, or entry |
+| **Backend** | `GET` | `/api/export/journal-entries/:id/csv` | Bearer Token | `FINANCE` | Export CSV for specific finalized journal entry |
+| **Backend** | `GET` | `/api/export/finance-batches/:id/csv` | Bearer Token | `FINANCE` | Export CSV for Finance Batch finalized journal entry |
+| **Backend** | `GET` | `/api/export/integrations` | Bearer Token | `FINANCE` | List available accounting integration providers and status |
+| **Backend** | `POST` | `/api/export/integrations/quickbooks/:id` | Bearer Token | `FINANCE` | Transform finalized entry into QuickBooks Online payload |
+| **Backend** | `POST` | `/api/export/integrations/xero/:id` | Bearer Token | `FINANCE` | Transform finalized entry into Xero ManualJournals payload |
+| **Backend** | `GET` | `/api/export/audit-logs` | Bearer Token | `FINANCE` | List export and integration audit trail |
 | **AI Service** | `GET` | `/health` | No | Any | AI service liveness check |
 | **AI Service** | `POST` | `/ocr/extract` | No (Internal) | Any | Accepts multipart image, runs preprocessing & Tesseract OCR |
 | **AI Service** | `POST` | `/receipt-understanding/extract` | No (Internal) | Any | Accepts OCR text, extracts structured fields using configured provider |
-| **Frontend** | `GET` | `/` | No | Any | Responsive PWA shell with capture, OCR view, AI extraction & confirmation |
+| **Frontend** | `GET` | `/` | No | Any | Responsive PWA shell with capture, review, batching, accounting & export |
 
 ---
 
@@ -473,20 +539,25 @@ npm run dev:frontend
 
 All test suites run in automated CI-ready test runners:
 
-### Backend Tests (72 tests across 7 suites)
+### Backend Tests (205 tests across 14 suites)
 ```bash
 cd backend
 npm test
 ```
 Tests cover:
 - Health and readiness endpoints (`health.test.js`, `readiness.test.js`)
-- Database pool connectivity and schema verification (`database.test.js`)
+- Database connectivity and schema verification (`database.test.js`)
 - Multi-tenancy RLS isolation, constraint violations, and pool context isolation (`multiTenancy.test.js`)
 - Password hashing, JWT signing, HS256 pinning, tampering/expiration rejection, and RBAC (`auth.test.js`)
-- Receipt file validation, magic byte spoofing detection, PDF rejection, strict EMPLOYEE upload RBAC, RLS receipt isolation, file streaming, OCR text retrieval, and OCR failure resilience (`receipts.test.js`)
-- Checkpoint 4 AI structured extraction: trigger AI extraction, AI output validation and sanitization, immutable AI provenance preservation, human confirmation (`confirmed_*`), deterministic effective values calculation, RLS cross-tenant isolation, RBAC role-scoped access (EMPLOYEE own, MANAGER/FINANCE tenant), and AI failure resilience (`extraction.test.js`)
+- Receipt file validation, magic byte verification, PDF rejection, strict EMPLOYEE upload RBAC, RLS receipt isolation, file streaming, OCR text retrieval, and failure resilience (`receipts.test.js`)
+- Checkpoint 4 AI structured extraction: trigger extraction, schema validation, immutable AI provenance, human confirmation, deterministic effective values calculation, and failure resilience (`extraction.test.js`)
+- Checkpoint 5 Policy & Duplicate Detection: deterministic limits, category restrictions, missing receipt checks, similarity duplicate scoring, and human review flags (`policy.test.js`, `validation.test.js`, `duplicate.test.js`)
+- Checkpoint 6 Approval Workflow: state transitions (`DRAFT`, `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, `CORRECTION_REQUESTED`), mandatory manager reasons, separation of duties, pessimistic concurrency control, and append-only audit trail (`workflow.test.js`)
+- Checkpoint 7 Finance Batches: atomic all-or-nothing batch creation, approved-only inclusion, duplicate prevention, item addition/removal, integer-cent arithmetic, review completion, and audit logging (`financeBatch.test.js`)
+- Checkpoint 8 Journal Entries & Accounting: deterministic category mapping, integer-cent double-entry line calculation, balance validation (`TOTAL DEBITS = TOTAL CREDITS`), reviewable draft state, finalization, duplicate generation prevention, and append-only audit trail (`journalEntry.test.js`)
+- Checkpoint 9 CSV Export & Accounting Integrations: finalized-only eligibility, RFC 4180 CSV serialization, formula injection mitigation, read-only safety, tenant isolation (404), empty dataset handling, QuickBooks Online payload transformation, Xero ManualJournals payload transformation, provider status, and append-only export audit logging (`export.test.js`)
 
-### AI / Document Service Tests (12 tests)
+### AI / Document Service Tests (12 tests across 3 modules)
 ```bash
 cd ai-service
 pytest
@@ -503,7 +574,14 @@ Tests cover:
 cd frontend
 npm run build
 ```
-Verifies clean compilation of the PWA bundle via Vite.
+Verifies clean compilation of the PWA bundle via Vite (built in ~700ms with zero errors).
+
+### Database Migration Idempotency
+```bash
+cd backend
+npm run migrate
+```
+Verifies migration runner detects zero pending migrations on already-migrated databases.
 
 ---
 
@@ -511,4 +589,4 @@ Verifies clean compilation of the PWA bundle via Vite.
 
 Following the incremental development process in `AGENTS.md`, work will proceed to:
 
-- **Checkpoint 5 — Policy + Duplicate Validation**: Deterministic policy validation (amount limits, category restrictions, receipt requirements, configured exceptions) and similarity-based duplicate detection (human review flags). *(AI output remains assistive; deterministic business code validates all data).*
+- **Checkpoint 10 — Security + Testing**: Dedicated security and testing audit checking authentication, RBAC, IDOR, tenant isolation, RLS, SQL injection, file uploads, path traversal, secrets management, API security, AI prompt injection, and accounting integrity.

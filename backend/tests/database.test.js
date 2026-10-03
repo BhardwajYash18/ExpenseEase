@@ -17,7 +17,7 @@ describe('Database Connectivity and Foundational Schema', () => {
     );
     const tableNames = res.rows.map((r) => r.table_name);
 
-    // Foundational & Checkpoint 3 + 4 + 5 + 6 + 7 + 8 tables must be present
+    // Foundational & Checkpoint 3 through 9 tables must be present
     expect(tableNames).toContain('schema_migrations');
     expect(tableNames).toContain('tenants');
     expect(tableNames).toContain('users');
@@ -36,12 +36,12 @@ describe('Database Connectivity and Foundational Schema', () => {
     expect(tableNames).toContain('journal_entries');
     expect(tableNames).toContain('journal_entry_lines');
     expect(tableNames).toContain('journal_entry_actions');
+    expect(tableNames).toContain('export_audit_logs');
 
-    // Strict scope check: No later-stage CP9+ export/integration tables must exist
-    expect(tableNames).not.toContain('csv_exports');
-    expect(tableNames).not.toContain('quickbooks_sync');
-    expect(tableNames).not.toContain('xero_sync');
+    // Strict scope check: No later-stage CP10+ or out-of-scope tables must exist
     expect(tableNames).not.toContain('payouts');
     expect(tableNames).not.toContain('settlements');
+    expect(tableNames).not.toContain('tax_filings');
+    expect(tableNames).not.toContain('corporate_cards');
   });
 });
