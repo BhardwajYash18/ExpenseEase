@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 /**
- * JournalEntryView (Checkpoint 8 & 9)
+ * JournalEntryView
  *
  * Dedicated UI for FINANCE role to manage Journal Entries, deterministic
  * double-entry accounting, CSV export, and QuickBooks/Xero integration points
@@ -257,159 +257,147 @@ function JournalEntryView({ authToken, currentUser }) {
   }
 
   return (
-    <div className="card" style={{ marginBottom: '24px' }}>
-      {/* Header & Sub-Navigation */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* Top Header & Tab Controls (Stitch Screen 4) */}
+      <div className="table-card" style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>
-            Journal Entries &amp; Accounting Integrations
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.125rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+            Finance Operations &bull; Double-Entry Ledger
           </h2>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
-            Deterministic Double-Entry Bookkeeping &bull; CSV Export &bull; QuickBooks &amp; Xero &bull; Checkpoint 9
+          <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
+            Deterministic GL accounts, balanced journal entries, and ERP integration points.
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px' }}>
+        {/* Tab Switcher */}
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           <button
             type="button"
-            className={`btn ${activeTab === 'list' || activeTab === 'detail' ? 'btn-primary' : 'btn-outline'}`}
-            style={{ fontSize: '0.8rem', padding: '6px 12px' }}
-            onClick={() => setActiveTab('list')}
+            className={`btn ${activeTab === 'list' ? 'btn-gold' : 'btn-outline'} btn-sm`}
+            onClick={() => {
+              setActiveTab('list');
+              fetchEntries();
+            }}
           >
             Journal Entries ({entries.length})
           </button>
           <button
             type="button"
-            className={`btn ${activeTab === 'mappings' ? 'btn-primary' : 'btn-outline'}`}
-            style={{ fontSize: '0.8rem', padding: '6px 12px' }}
-            onClick={() => setActiveTab('mappings')}
+            className={`btn ${activeTab === 'mappings' ? 'btn-gold' : 'btn-outline'} btn-sm`}
+            onClick={() => {
+              setActiveTab('mappings');
+              fetchMappings();
+            }}
           >
-            Account Mappings ({mappings.length})
+            GL Mappings ({mappings.length})
           </button>
           <button
             type="button"
-            className={`btn ${activeTab === 'integrations' ? 'btn-primary' : 'btn-outline'}`}
-            style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+            className={`btn ${activeTab === 'integrations' ? 'btn-gold' : 'btn-outline'} btn-sm`}
             onClick={() => {
               setActiveTab('integrations');
               fetchIntegrationsData();
             }}
           >
-            Integrations &amp; Audit ({auditLogs.length})
+            Export &amp; Integrations
           </button>
         </div>
       </div>
 
       {/* Messages */}
       {error && (
-        <div className="alert alert-danger" style={{ marginBottom: '14px', fontSize: '0.85rem' }}>
-          {error}
+        <div className="alert alert-danger">
+          <strong>Error:</strong> {error}
         </div>
       )}
       {successMsg && (
-        <div className="alert alert-success" style={{ marginBottom: '14px', fontSize: '0.85rem' }}>
+        <div className="alert alert-success">
           {successMsg}
         </div>
       )}
 
       {/* TAB 1: JOURNAL ENTRIES LIST */}
       {activeTab === 'list' && (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              All journal entries generated from reviewed Finance Batches
-            </span>
+        <div className="table-card">
+          <div className="table-header-bar">
+            <div>
+              <span className="table-title">General Ledger Journal Entries</span>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', display: 'block', marginTop: '2px' }}>
+                Every entry is generated deterministically from a reviewed Finance Batch.
+              </span>
+            </div>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
                 type="button"
-                className="btn btn-outline"
-                style={{ fontSize: '0.75rem', padding: '5px 10px', color: '#38bdf8', borderColor: '#38bdf8' }}
-                onClick={() => handleDownloadCsv('/api/export/csv', 'all-finalized-journals.csv')}
-                title="Download all finalized journal entries for tenant as CSV"
+                className="btn btn-outline btn-sm"
+                onClick={() => handleDownloadCsv('/api/export/csv', 'all-journal-entries.csv')}
               >
                 &darr; Export All Finalized CSV
               </button>
-              <button
-                type="button"
-                className="btn btn-outline"
-                style={{ fontSize: '0.75rem', padding: '5px 10px' }}
-                onClick={fetchEntries}
-              >
-                Refresh
+              <button type="button" className="btn btn-outline btn-sm" onClick={fetchEntries} disabled={loading}>
+                🔄 Refresh
               </button>
             </div>
           </div>
 
           {entries.length === 0 ? (
-            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', background: 'rgba(15, 23, 42, 0.4)', borderRadius: '6px' }}>
-              No journal entries found. Generate journal entries from completed Finance Batches.
+            <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
+              No journal entries created yet. Generate one from a <strong>REVIEWED</strong> Finance Batch.
             </div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+            <div className="data-table-wrapper">
+              <table className="data-table">
                 <thead>
-                  <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)' }}>
-                    <th style={{ padding: '8px 6px' }}>Journal Entry ID</th>
-                    <th style={{ padding: '8px 6px' }}>Finance Batch</th>
-                    <th style={{ padding: '8px 6px' }}>Status</th>
-                    <th style={{ padding: '8px 6px' }}>Total Debit</th>
-                    <th style={{ padding: '8px 6px' }}>Total Credit</th>
-                    <th style={{ padding: '8px 6px' }}>Balance</th>
-                    <th style={{ padding: '8px 6px', textAlign: 'right' }}>Actions</th>
+                  <tr>
+                    <th>Entry ID</th>
+                    <th>Batch ID</th>
+                    <th>Status</th>
+                    <th>Total Debit</th>
+                    <th>Total Credit</th>
+                    <th>Balance Invariant</th>
+                    <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {entries.map((entry) => (
-                    <tr key={entry.id} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                      <td style={{ padding: '8px 6px', fontFamily: 'monospace' }} title={entry.id}>
-                        {entry.id.slice(0, 8)}...
-                      </td>
-                      <td style={{ padding: '8px 6px', fontFamily: 'monospace' }} title={entry.batchId}>
-                        {entry.batchId.slice(0, 8)}...
-                      </td>
-                      <td style={{ padding: '8px 6px' }}>
-                        <span style={{
-                          display: 'inline-block',
-                          padding: '2px 8px',
-                          borderRadius: '12px',
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          background: entry.status === 'FINALIZED' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-                          color: entry.status === 'FINALIZED' ? '#10b981' : '#f59e0b',
-                        }}>
-                          {entry.status}
+                    <tr key={entry.id}>
+                      <td style={{ fontWeight: 600, fontFamily: 'monospace' }}>{entry.id.slice(0, 13)}...</td>
+                      <td style={{ fontFamily: 'monospace' }}>{entry.batchId.slice(0, 8)}...</td>
+                      <td>
+                        <span className={`status-pill ${entry.status === 'FINALIZED' ? 'approved' : 'pending'}`}>
+                          <span className="status-dot"></span>
+                          <span>{entry.status}</span>
                         </span>
                       </td>
-                      <td style={{ padding: '8px 6px', fontWeight: 600, color: '#38bdf8' }}>
-                        ${entry.totalDebit.toFixed(2)}
-                      </td>
-                      <td style={{ padding: '8px 6px', fontWeight: 600, color: '#38bdf8' }}>
-                        ${entry.totalCredit.toFixed(2)}
-                      </td>
-                      <td style={{ padding: '8px 6px' }}>
+                      <td className="table-amount">${entry.totalDebit.toFixed(2)}</td>
+                      <td className="table-amount">${entry.totalCredit.toFixed(2)}</td>
+                      <td>
                         {entry.isBalanced ? (
-                          <span style={{ color: '#10b981', fontWeight: 600, fontSize: '0.75rem' }}>&check; Balanced</span>
+                          <span className="status-pill policy-pass">
+                            <span className="status-dot"></span>
+                            <span>Balanced (0.00)</span>
+                          </span>
                         ) : (
-                          <span style={{ color: '#ef4444', fontWeight: 600, fontSize: '0.75rem' }}>&cross; Imbalanced</span>
+                          <span className="status-pill policy-warn">
+                            <span>Imbalanced</span>
+                          </span>
                         )}
                       </td>
-                      <td style={{ padding: '8px 6px', textAlign: 'right' }}>
+                      <td style={{ textAlign: 'right' }}>
                         <div style={{ display: 'inline-flex', gap: '6px' }}>
                           <button
                             type="button"
-                            className="btn btn-outline"
-                            style={{ fontSize: '0.75rem', padding: '4px 8px' }}
+                            className="btn btn-outline btn-sm"
                             onClick={() => fetchEntryDetail(entry.id)}
                           >
-                            View
+                            Inspect &rarr;
                           </button>
                           {entry.status === 'FINALIZED' && (
                             <button
                               type="button"
-                              className="btn btn-outline"
-                              style={{ fontSize: '0.75rem', padding: '4px 8px', color: '#10b981', borderColor: '#10b981' }}
+                              className="btn btn-outline btn-sm"
                               onClick={() => handleDownloadCsv(`/api/export/journal-entries/${entry.id}/csv`, `journal-${entry.id.slice(0, 8)}.csv`)}
-                              title="Export CSV"
+                              title="Download CSV"
                             >
                               CSV
                             </button>
@@ -425,14 +413,14 @@ function JournalEntryView({ authToken, currentUser }) {
         </div>
       )}
 
-      {/* TAB 2: JOURNAL ENTRY DETAIL & LINES INSPECTOR */}
+      {/* TAB 2: JOURNAL ENTRY DETAIL & ZERO-BALANCE LEDGER (Stitch Screen 4 Highlight) */}
       {activeTab === 'detail' && selectedEntry && (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          {/* Top Actions Bar */}
+          <div className="table-card" style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
             <button
               type="button"
-              className="btn btn-outline"
-              style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+              className="btn btn-outline btn-sm"
               onClick={() => setActiveTab('list')}
             >
               &larr; Back to Journal Entries
@@ -442,12 +430,11 @@ function JournalEntryView({ authToken, currentUser }) {
               {selectedEntry.status === 'DRAFT' && (
                 <button
                   type="button"
-                  className="btn btn-primary"
-                  style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+                  className="btn btn-gold"
                   onClick={() => handleFinalize(selectedEntry.id)}
                   disabled={finalizing || !selectedEntry.isBalanced}
                 >
-                  {finalizing ? 'Finalizing...' : 'Finalize Journal Entry'}
+                  {finalizing ? 'Finalizing...' : '🔒 Finalize Journal Entry'}
                 </button>
               )}
 
@@ -456,7 +443,6 @@ function JournalEntryView({ authToken, currentUser }) {
                   <button
                     type="button"
                     className="btn btn-outline"
-                    style={{ fontSize: '0.8rem', padding: '6px 12px', color: '#10b981', borderColor: '#10b981' }}
                     onClick={() => handleDownloadCsv(`/api/export/journal-entries/${selectedEntry.id}/csv`, `journal-${selectedEntry.id.slice(0, 8)}.csv`)}
                   >
                     &darr; Export CSV
@@ -464,427 +450,296 @@ function JournalEntryView({ authToken, currentUser }) {
                   <button
                     type="button"
                     className="btn btn-outline"
-                    style={{ fontSize: '0.8rem', padding: '6px 12px', color: '#38bdf8', borderColor: '#38bdf8' }}
                     onClick={() => handleExecuteIntegration('quickbooks', selectedEntry.id)}
                     disabled={executingIntegration}
                   >
-                    QuickBooks
+                    QuickBooks Online
                   </button>
                   <button
                     type="button"
                     className="btn btn-outline"
-                    style={{ fontSize: '0.8rem', padding: '6px 12px', color: '#a78bfa', borderColor: '#a78bfa' }}
                     onClick={() => handleExecuteIntegration('xero', selectedEntry.id)}
                     disabled={executingIntegration}
                   >
-                    Xero
+                    Xero Journals
                   </button>
                 </>
               )}
             </div>
           </div>
 
-          {/* Metadata Card */}
-          <div style={{ background: 'rgba(15, 23, 42, 0.5)', padding: '16px', borderRadius: '8px', marginBottom: '16px', border: '1px solid var(--border-color)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', fontSize: '0.85rem' }}>
+          {/* Zero-Balance Ledger Validator Card (Signature Stitch Screen 4) */}
+          <div className={`zero-balance-card ${selectedEntry.isBalanced ? '' : 'imbalanced'}`}>
+            <div>
+              <div className={`balance-status-text ${selectedEntry.isBalanced ? '' : 'imbalanced'}`}>
+                {selectedEntry.isBalanced ? '✓ Tally Balanced (0.00 Difference)' : '⚠ Imbalance Detected'}
+              </div>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                Double-Entry Invariant: $\sum \text{Debits} = \sum \text{Credits}$ enforced using exact integer-cent arithmetic.
+              </p>
+            </div>
+
+            <div className="balance-totals-group">
               <div>
-                <span style={{ color: 'var(--text-secondary)', display: 'block' }}>Journal Entry ID:</span>
-                <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{selectedEntry.id}</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>TOTAL DEBIT</span>
+                <span>${selectedEntry.totalDebit.toFixed(2)}</span>
               </div>
               <div>
-                <span style={{ color: 'var(--text-secondary)', display: 'block' }}>Finance Batch ID:</span>
-                <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{selectedEntry.batchId}</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>TOTAL CREDIT</span>
+                <span>${selectedEntry.totalCredit.toFixed(2)}</span>
               </div>
-              <div>
-                <span style={{ color: 'var(--text-secondary)', display: 'block' }}>Status:</span>
-                <span style={{
-                  display: 'inline-block',
-                  padding: '2px 8px',
-                  borderRadius: '12px',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  background: selectedEntry.status === 'FINALIZED' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-                  color: selectedEntry.status === 'FINALIZED' ? '#10b981' : '#f59e0b',
-                }}>
-                  {selectedEntry.status}
-                </span>
-              </div>
-              <div>
-                <span style={{ color: 'var(--text-secondary)', display: 'block' }}>Double-Entry Integrity:</span>
-                {selectedEntry.isBalanced ? (
-                  <span style={{ color: '#10b981', fontWeight: 600 }}>TOTAL DEBITS = TOTAL CREDITS (${selectedEntry.totalDebit.toFixed(2)})</span>
-                ) : (
-                  <span style={{ color: '#ef4444', fontWeight: 600 }}>Imbalanced (Debits: ${selectedEntry.totalDebit.toFixed(2)}, Credits: ${selectedEntry.totalCredit.toFixed(2)})</span>
-                )}
-              </div>
-              {selectedEntry.finalizedAt && (
-                <div>
-                  <span style={{ color: 'var(--text-secondary)', display: 'block' }}>Finalized:</span>
-                  <span>{new Date(selectedEntry.finalizedAt).toLocaleString()} by {selectedEntry.finalizedBy?.name || 'Finance'}</span>
-                </div>
-              )}
             </div>
           </div>
 
-          {/* Journal Entry Lines Table */}
-          <h3 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '8px' }}>
-            Journal Entry Lines ({selectedEntry.lines.length})
-          </h3>
+          {/* Double-Entry Lines Table */}
+          <div className="table-card">
+            <div className="table-header-bar">
+              <span className="table-title">Ordered Double-Entry Lines ({selectedEntry.lines.length})</span>
+              <span className={`status-pill ${selectedEntry.status === 'FINALIZED' ? 'approved' : 'pending'}`}>
+                <span className="status-dot"></span>
+                <span>{selectedEntry.status}</span>
+              </span>
+            </div>
 
-          <div style={{ overflowX: 'auto', marginBottom: '20px' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)' }}>
-                  <th style={{ padding: '8px 6px', width: '40px' }}>#</th>
-                  <th style={{ padding: '8px 6px' }}>Account (GL)</th>
-                  <th style={{ padding: '8px 6px' }}>Description</th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right' }}>Debit ($)</th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right' }}>Credit ($)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedEntry.lines.map((line) => (
-                  <tr key={line.id} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                    <td style={{ padding: '8px 6px', color: 'var(--text-muted)' }}>{line.lineOrder}</td>
-                    <td style={{ padding: '8px 6px', fontWeight: 600 }}>{line.account}</td>
-                    <td style={{ padding: '8px 6px', color: 'var(--text-secondary)' }}>{line.description || '—'}</td>
-                    <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 600, color: line.debitAmount > 0 ? '#38bdf8' : 'var(--text-muted)' }}>
-                      {line.debitAmount > 0 ? `$${line.debitAmount.toFixed(2)}` : '—'}
-                    </td>
-                    <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 600, color: line.creditAmount > 0 ? '#a78bfa' : 'var(--text-muted)' }}>
-                      {line.creditAmount > 0 ? `$${line.creditAmount.toFixed(2)}` : '—'}
-                    </td>
+            <div className="data-table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: '50px' }}>#</th>
+                    <th>Account &amp; GL Code</th>
+                    <th style={{ textAlign: 'right' }}>Debit ($)</th>
+                    <th style={{ textAlign: 'right' }}>Credit ($)</th>
+                    <th>Description</th>
                   </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ borderTop: '2px solid var(--border-color)', fontWeight: 700 }}>
-                  <td colSpan="3" style={{ padding: '10px 6px', textAlign: 'right' }}>Total:</td>
-                  <td style={{ padding: '10px 6px', textAlign: 'right', color: '#38bdf8' }}>${selectedEntry.totalDebit.toFixed(2)}</td>
-                  <td style={{ padding: '10px 6px', textAlign: 'right', color: '#a78bfa' }}>${selectedEntry.totalCredit.toFixed(2)}</td>
-                </tr>
-              </tfoot>
-            </table>
+                </thead>
+                <tbody>
+                  {selectedEntry.lines.map((line) => (
+                    <tr key={line.id}>
+                      <td style={{ color: 'var(--text-muted)', fontWeight: 600 }}>{line.lineOrder}</td>
+                      <td style={{ fontWeight: 600 }}>{line.account}</td>
+                      <td className="table-amount" style={{ textAlign: 'right', color: line.debitAmount > 0 ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                        {line.debitAmount > 0 ? `$${line.debitAmount.toFixed(2)}` : '—'}
+                      </td>
+                      <td className="table-amount" style={{ textAlign: 'right', color: line.creditAmount > 0 ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                        {line.creditAmount > 0 ? `$${line.creditAmount.toFixed(2)}` : '—'}
+                      </td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{line.description}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
-          {/* Audit Trail */}
-          <h3 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '8px' }}>
-            Accounting Audit Trail ({selectedEntry.auditHistory.length})
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {selectedEntry.auditHistory.map((a) => (
-              <div key={a.id} style={{ fontSize: '0.8rem', padding: '8px 12px', background: 'rgba(15, 23, 42, 0.4)', borderRadius: '6px', borderLeft: '3px solid var(--accent-primary)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <strong>{a.action} by {a.actorName || a.actorRole}</strong>
-                  <span style={{ color: 'var(--text-muted)' }}>{new Date(a.createdAt).toLocaleString()}</span>
+          {/* Audit Trail Timeline */}
+          <div className="table-card" style={{ padding: '20px' }}>
+            <h4 style={{ fontFamily: 'var(--font-display)', fontSize: '0.9375rem', fontWeight: 700, marginBottom: '14px' }}>
+              Journal Entry Audit Log
+            </h4>
+            <div className="timeline-list">
+              {selectedEntry.auditHistory.map((a) => (
+                <div key={a.id} className="timeline-item">
+                  <div className="timeline-dot"></div>
+                  <span className="timeline-time">
+                    {new Date(a.createdAt).toLocaleString()} &bull; <strong>{a.actorName}</strong> ({a.actorRole})
+                  </span>
+                  <div className="timeline-text">
+                    <strong>{a.action}</strong>: {a.details || 'Action recorded'}
+                  </div>
                 </div>
-                <div style={{ color: 'var(--text-secondary)' }}>{a.details}</div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       )}
 
-      {/* TAB 3: ACCOUNT MAPPINGS CONFIGURATION */}
+      {/* TAB 3: ACCOUNT MAPPINGS */}
       {activeTab === 'mappings' && (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <div>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                Deterministic mappings: Expense Category &rarr; Debit (Expense) Account &amp; Credit (Payable) Account
-              </span>
-            </div>
-            <button
-              type="button"
-              className="btn btn-outline"
-              style={{ fontSize: '0.75rem', padding: '4px 8px' }}
-              onClick={fetchMappings}
-            >
-              Refresh
-            </button>
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Add Mapping Form */}
+          <form onSubmit={handleSaveMapping} className="table-card" style={{ padding: '20px' }}>
+            <h3 className="table-title" style={{ marginBottom: '4px' }}>Configure GL Account Mapping</h3>
+            <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
+              Maps an expense category to its deterministic General Ledger debit and credit accounts.
+            </p>
 
-          {/* Add / Update Mapping Form */}
-          <form onSubmit={handleSaveMapping} style={{ background: 'rgba(15, 23, 42, 0.5)', padding: '16px', borderRadius: '8px', marginBottom: '20px', border: '1px solid var(--border-color)' }}>
-            <h4 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '10px' }}>Add or Update Category Mapping</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '12px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '4px' }}>Expense Category</label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '14px' }}>
+              <div className="form-group">
+                <label className="form-label">Expense Category</label>
                 <input
                   type="text"
+                  className="form-input"
                   placeholder="e.g. Meals, Travel, Software"
                   value={mappingCategory}
                   onChange={(e) => setMappingCategory(e.target.value)}
-                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', background: '#0f172a', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.85rem' }}
+                  required
                 />
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '4px' }}>Debit Account (Expense GL)</label>
+
+              <div className="form-group">
+                <label className="form-label">Debit Account (Expense GL)</label>
                 <input
                   type="text"
-                  placeholder="e.g. 6000 - Meals & Entertainment"
+                  className="form-input"
+                  placeholder="e.g. 6010 - Meals & Entertainment"
                   value={mappingDebitAccount}
                   onChange={(e) => setMappingDebitAccount(e.target.value)}
-                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', background: '#0f172a', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.85rem' }}
+                  required
                 />
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '4px' }}>Credit Account (Liability / Payable)</label>
+
+              <div className="form-group">
+                <label className="form-label">Credit Account (Payable GL)</label>
                 <input
                   type="text"
+                  className="form-input"
                   placeholder="e.g. 2000 - Accounts Payable"
                   value={mappingCreditAccount}
                   onChange={(e) => setMappingCreditAccount(e.target.value)}
-                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', background: '#0f172a', border: '1px solid var(--border-color)', color: '#fff', fontSize: '0.85rem' }}
+                  required
                 />
               </div>
             </div>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={savingMapping}
-              style={{ fontSize: '0.8rem', padding: '6px 14px' }}
-            >
-              {savingMapping ? 'Saving...' : 'Save Account Mapping'}
-            </button>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="submit" className="btn btn-gold" disabled={savingMapping}>
+                {savingMapping ? 'Saving...' : 'Save Account Mapping'}
+              </button>
+            </div>
           </form>
 
-          {/* Mappings Table */}
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)' }}>
-                <th style={{ padding: '8px 6px' }}>Expense Category</th>
-                <th style={{ padding: '8px 6px' }}>Debit Account (Expense GL)</th>
-                <th style={{ padding: '8px 6px' }}>Credit Account (Payable GL)</th>
-                <th style={{ padding: '8px 6px' }}>Last Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {mappings.map((m) => (
-                <tr key={m.id} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                  <td style={{ padding: '8px 6px', fontWeight: 600 }}>{m.category}</td>
-                  <td style={{ padding: '8px 6px', color: '#38bdf8' }}>{m.debitAccount}</td>
-                  <td style={{ padding: '8px 6px', color: '#a78bfa' }}>{m.creditAccount}</td>
-                  <td style={{ padding: '8px 6px', color: 'var(--text-muted)' }}>{new Date(m.updatedAt).toLocaleDateString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {/* Current Mappings Table */}
+          <div className="table-card">
+            <div className="table-header-bar">
+              <span className="table-title">Active Category Mappings ({mappings.length})</span>
+            </div>
+
+            <div className="data-table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th>Debit Account</th>
+                    <th>Credit Account</th>
+                    <th style={{ textAlign: 'right' }}>Last Updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mappings.map((m) => (
+                    <tr key={m.id}>
+                      <td style={{ fontWeight: 600 }}>{m.category}</td>
+                      <td><code>{m.debitAccount}</code></td>
+                      <td><code>{m.creditAccount}</code></td>
+                      <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>
+                        {new Date(m.updatedAt || m.createdAt).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* TAB 4: INTEGRATIONS & EXPORT AUDIT TRAIL */}
+      {/* TAB 4: EXPORT & INTEGRATIONS */}
       {activeTab === 'integrations' && (
-        <div>
-          <div style={{ marginBottom: '20px' }}>
-            <h3 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '8px' }}>
-              Accounting Integration Points (QuickBooks / Xero)
-            </h3>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '14px' }}>
-              ExpensEase provides clean provider adapter boundaries that transform finalized CP8 Journal Entries into provider-ready schemas.
-              Live synchronization connects seamlessly when external OAuth / sandbox credentials are configured.
-            </p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px', marginBottom: '24px' }}>
-              {providers.map((prov) => (
-                <div key={prov.id} style={{ background: 'rgba(15, 23, 42, 0.5)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <strong style={{ fontSize: '0.95rem' }}>{prov.name}</strong>
-                    <span style={{
-                      padding: '2px 8px',
-                      borderRadius: '12px',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      background: 'rgba(56, 189, 248, 0.2)',
-                      color: '#38bdf8',
-                    }}>
-                      {prov.status}
-                    </span>
-                  </div>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 10px 0' }}>
-                    {prov.description}
-                  </p>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    Boundary: Finalized Journal Entry &rarr; {prov.name} API Payload
-                  </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Provider Cards */}
+          <div className="action-cards-grid">
+            {providers.map((p) => (
+              <div key={p.provider} className="action-card">
+                <div className="action-card-icon">⚡</div>
+                <div>
+                  <h4 className="action-card-title">{p.displayName}</h4>
+                  <p className="action-card-desc">{p.description}</p>
                 </div>
-              ))}
-            </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginTop: 'auto' }}>
+                  <span className="status-pill approved">
+                    <span className="status-dot"></span>
+                    <span>Integration Point Ready</span>
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>RFC 4180</span>
+                </div>
+              </div>
+            ))}
           </div>
 
-          {/* Audit Logs Table */}
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-              <h3 style={{ fontSize: '0.95rem', fontWeight: 600, margin: 0 }}>
-                Export &amp; Integration Audit Trail ({auditLogs.length})
-              </h3>
-              <button
-                type="button"
-                className="btn btn-outline"
-                style={{ fontSize: '0.75rem', padding: '4px 8px' }}
-                onClick={fetchIntegrationsData}
-              >
-                Refresh
+          {/* Export Audit Log Table */}
+          <div className="table-card">
+            <div className="table-header-bar">
+              <span className="table-title">Export &amp; Integration Audit Trail</span>
+              <button type="button" className="btn btn-outline btn-sm" onClick={fetchIntegrationsData}>
+                🔄 Refresh
               </button>
             </div>
 
-            {auditLogs.length === 0 ? (
-              <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', background: 'rgba(15, 23, 42, 0.4)', borderRadius: '6px' }}>
-                No export or integration actions recorded yet.
-              </div>
-            ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)' }}>
-                      <th style={{ padding: '8px 6px' }}>Timestamp</th>
-                      <th style={{ padding: '8px 6px' }}>Type</th>
-                      <th style={{ padding: '8px 6px' }}>Resource</th>
-                      <th style={{ padding: '8px 6px' }}>Actor</th>
-                      <th style={{ padding: '8px 6px' }}>Lines</th>
-                      <th style={{ padding: '8px 6px' }}>Details</th>
+            <div className="data-table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Export Type</th>
+                    <th>Resource Type</th>
+                    <th>Record Count</th>
+                    <th>Actor</th>
+                    <th>Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditLogs.map((log) => (
+                    <tr key={log.id}>
+                      <td style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                        {new Date(log.createdAt).toLocaleString()}
+                      </td>
+                      <td>
+                        <span className="status-pill draft">{log.exportType}</span>
+                      </td>
+                      <td>{log.resourceType}</td>
+                      <td style={{ fontWeight: 600 }}>{log.recordCount}</td>
+                      <td>{log.actorRole}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{log.details}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {auditLogs.map((log) => (
-                      <tr key={log.id} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                        <td style={{ padding: '8px 6px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                          {new Date(log.createdAt).toLocaleString()}
-                        </td>
-                        <td style={{ padding: '8px 6px' }}>
-                          <span style={{
-                            padding: '2px 6px',
-                            borderRadius: '10px',
-                            fontSize: '0.7rem',
-                            fontWeight: 600,
-                            background: log.exportType === 'CSV' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(56, 189, 248, 0.2)',
-                            color: log.exportType === 'CSV' ? '#10b981' : '#38bdf8',
-                          }}>
-                            {log.exportType}
-                          </span>
-                        </td>
-                        <td style={{ padding: '8px 6px', fontFamily: 'monospace' }}>
-                          {log.resourceType}
-                        </td>
-                        <td style={{ padding: '8px 6px' }}>
-                          {log.actorName || log.actorRole}
-                        </td>
-                        <td style={{ padding: '8px 6px', fontWeight: 600 }}>
-                          {log.recordCount}
-                        </td>
-                        <td style={{ padding: '8px 6px', color: 'var(--text-secondary)' }}>
-                          {log.details}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
       {/* Integration Payload Modal */}
       {integrationModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.75)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 1000,
-          padding: '20px',
-        }}>
-          <div style={{
-            background: '#1e293b',
-            borderRadius: '8px',
-            border: '1px solid var(--border-color)',
-            maxWidth: '750px',
-            width: '100%',
-            maxHeight: '85vh',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>
-                {integrationModal.provider} Integration Payload
-              </h3>
-              <button
-                type="button"
-                className="btn btn-outline"
-                style={{ padding: '2px 8px', fontSize: '0.8rem' }}
-                onClick={() => setIntegrationModal(null)}
-              >
-                &times; Close
-              </button>
+        <div className="modal-overlay">
+          <div className="modal-dialog">
+            <div className="modal-header">
+              <h4 className="modal-title">
+                {integrationModal.provider} Provider Payload
+              </h4>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setIntegrationModal(null)}>✕</button>
             </div>
-
-            <div style={{ padding: '20px', overflowY: 'auto' }}>
-              <div className="alert alert-info" style={{ marginBottom: '14px', fontSize: '0.8rem' }}>
-                <strong>Integration Point Ready:</strong> {integrationModal.message}
+            <div className="modal-body">
+              <div className="alert alert-info" style={{ marginBottom: '14px' }}>
+                Status: <strong>INTEGRATION_POINT_READY</strong>. Read-only provider schema transformation for future external sync.
               </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginBottom: '16px', fontSize: '0.8rem' }}>
-                <div>
-                  <span style={{ color: 'var(--text-muted)' }}>Provider:</span>
-                  <div><strong>{integrationModal.provider}</strong></div>
-                </div>
-                <div>
-                  <span style={{ color: 'var(--text-muted)' }}>Status:</span>
-                  <div><strong style={{ color: '#38bdf8' }}>{integrationModal.status}</strong></div>
-                </div>
-                <div>
-                  <span style={{ color: 'var(--text-muted)' }}>Lines Transformed:</span>
-                  <div><strong>{integrationModal.lineCount}</strong></div>
-                </div>
-                <div>
-                  <span style={{ color: 'var(--text-muted)' }}>Total Amount:</span>
-                  <div><strong>${Number(integrationModal.totalAmount).toFixed(2)}</strong></div>
-                </div>
-              </div>
-
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px' }}>
-                Provider Payload Schema (JSON):
-              </label>
-              <pre style={{
-                background: '#0f172a',
-                padding: '14px',
-                borderRadius: '6px',
-                border: '1px solid var(--border-color)',
-                fontSize: '0.78rem',
-                overflowX: 'auto',
-                color: '#e2e8f0',
-                margin: 0,
-              }}>
+              <pre style={{ background: '#f8fafc', padding: '14px', borderRadius: 'var(--radius-md)', fontSize: '0.8rem', whiteSpace: 'pre-wrap', maxHeight: '360px', overflowY: 'auto' }}>
                 {JSON.stringify(integrationModal.payload, null, 2)}
               </pre>
             </div>
-
-            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+            <div className="modal-footer">
               <button
                 type="button"
-                className="btn btn-primary"
-                style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+                className="btn btn-gold"
                 onClick={() => {
                   navigator.clipboard.writeText(JSON.stringify(integrationModal.payload, null, 2));
-                  setSuccessMsg(`Copied ${integrationModal.provider} payload to clipboard`);
+                  setSuccessMsg('Copied payload to clipboard!');
+                  setTimeout(() => setSuccessMsg(null), 3000);
                 }}
               >
-                Copy JSON Payload
+                📋 Copy Payload
               </button>
-              <button
-                type="button"
-                className="btn btn-outline"
-                style={{ fontSize: '0.8rem', padding: '6px 14px' }}
-                onClick={() => setIntegrationModal(null)}
-              >
-                Done
+              <button type="button" className="btn btn-outline" onClick={() => setIntegrationModal(null)}>
+                Close
               </button>
             </div>
           </div>

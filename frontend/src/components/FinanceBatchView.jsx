@@ -1,20 +1,12 @@
 import React, { useState, useEffect } from 'react';
 
 /**
- * FinanceBatchView (Checkpoint 7)
+ * FinanceBatchView
  *
  * Dedicated UI for FINANCE role to manage Finance Batches per AGENTS.md Section 14
  * and docs/PRD.md FR-09 & FR-12.
- *
- * Requirements & Scope:
- * - Batches are identified exclusively by their UUID (no invented batch_name or notes fields).
- * - Statuses 'OPEN' and 'REVIEWED' represent implementation states for review progression.
- * - Approved expenses can be grouped into batches.
- * - Duplicate inclusion of the same expense within a batch is prevented.
- * - Expenses removed from an open batch remain in 'APPROVED' workflow state.
- * - Completing finance review locks the batch from further item additions/removals.
  */
-function FinanceBatchView({ authToken, currentUser }) {
+function FinanceBatchView({ authToken, currentUser, onSelectBatch }) {
   const [batches, setBatches] = useState([]);
   const [eligibleExpenses, setEligibleExpenses] = useState([]);
   const [selectedBatch, setSelectedBatch] = useState(null);
@@ -35,13 +27,14 @@ function FinanceBatchView({ authToken, currentUser }) {
   const [selectedAddReceiptId, setSelectedAddReceiptId] = useState('');
   const [addingItem, setAddingItem] = useState(false);
 
-  // Checkpoint 8 Journal Entry state
+  // Journal Entry state
   const [batchJournalEntry, setBatchJournalEntry] = useState(null);
   const [generatingJournal, setGeneratingJournal] = useState(false);
 
   // Fetch batches list
   async function fetchBatches() {
     if (!authToken) return;
+    setLoading(true);
     try {
       const res = await fetch('/api/finance-batches', {
         headers: { Authorization: `Bearer ${authToken}` },
@@ -52,6 +45,8 @@ function FinanceBatchView({ authToken, currentUser }) {
       }
     } catch (err) {
       // quiet fail
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -98,8 +93,8 @@ function FinanceBatchView({ authToken, currentUser }) {
           // No journal entry yet
         }
       } else {
-        const data = await res.json();
-        setError(data.error?.message || 'Failed to load batch');
+        const errData = await res.json();
+        throw new Error(errData.error?.message || 'Failed to fetch batch details');
       }
     } catch (err) {
       setError(err.message);
@@ -108,34 +103,7 @@ function FinanceBatchView({ authToken, currentUser }) {
     }
   }
 
-  // Handle generating journal entry from reviewed batch
-  async function handleGenerateJournalEntry() {
-    if (!authToken || !selectedBatch) return;
-    setGeneratingJournal(true);
-    setError(null);
-    setSuccessMsg(null);
-
-    try {
-      const res = await fetch(`/api/finance-batches/${selectedBatch.id}/journal-entry`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error?.message || 'Failed to generate journal entry');
-      }
-
-      setBatchJournalEntry(data.journalEntry);
-      setSuccessMsg('Journal entry successfully generated from Finance Batch.');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setGeneratingJournal(false);
-    }
-  }
-
-
+  // Initial load
   useEffect(() => {
     fetchBatches();
     fetchEligibleExpenses();
@@ -144,11 +112,7 @@ function FinanceBatchView({ authToken, currentUser }) {
   // Handle batch creation
   async function handleCreateBatch(e) {
     e.preventDefault();
-    if (selectedReceiptIds.size === 0) {
-      setError('Please select at least one approved expense to include in the batch.');
-      return;
-    }
-
+    if (selectedReceiptIds.size === 0) return;
     setCreating(true);
     setError(null);
     setSuccessMsg(null);
@@ -160,9 +124,7 @@ function FinanceBatchView({ authToken, currentUser }) {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${authToken}`,
         },
-        body: JSON.stringify({
-          receiptIds: Array.from(selectedReceiptIds),
-        }),
+        body: JSON.stringify({ receiptIds: Array.from(selectedReceiptIds) }),
       });
 
       const data = await res.json();
@@ -170,7 +132,7 @@ function FinanceBatchView({ authToken, currentUser }) {
         throw new Error(data.error?.message || 'Failed to create finance batch');
       }
 
-      setSuccessMsg(`Batch created successfully! (ID: ${data.batch.id.slice(0, 8)}...)`);
+      setSuccessMsg(`Finance Batch created successfully! (ID: ${data.batch.id.slice(0, 8)}...)`);
       setSelectedReceiptIds(new Set());
       await fetchBatches();
       await fetchEligibleExpenses();
@@ -265,7 +227,7 @@ function FinanceBatchView({ authToken, currentUser }) {
         throw new Error(data.error?.message || 'Failed to review finance batch');
       }
 
-      setSuccessMsg('Finance review completed. Batch is now marked as REVIEWED.');
+      setSuccessMsg('Finance review completed. Batch is now locked and marked as REVIEWED.');
       setShowReviewModal(false);
       setSelectedBatch(data.batch);
       await fetchBatches();
@@ -276,20 +238,51 @@ function FinanceBatchView({ authToken, currentUser }) {
     }
   }
 
+  // Generate Journal Entry from reviewed batch
+  async function handleGenerateJournalEntry() {
+    if (!selectedBatch) return;
+    setGeneratingJournal(true);
+    setError(null);
+    setSuccessMsg(null);
+
+    try {
+      const res = await fetch(`/api/finance-batches/${selectedBatch.id}/journal-entry`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error?.message || 'Failed to generate journal entry');
+      }
+
+      setSuccessMsg(`Journal Entry generated successfully! (Status: ${data.journalEntry.status})`);
+      setBatchJournalEntry(data.journalEntry);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setGeneratingJournal(false);
+    }
+  }
+
   // Calculate live selected total for creation form
   const selectedTotal = eligibleExpenses
     .filter((e) => selectedReceiptIds.has(e.receiptId))
     .reduce((sum, e) => sum + (typeof e.amount === 'number' ? Math.round(e.amount * 100) : 0), 0) / 100;
 
   return (
-    <div className="card" style={{ marginBottom: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* Top Controls Header */}
+      <div className="table-card" style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>
-            Finance Operations &bull; Batches
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.125rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+            Finance Batches &amp; Audit Grouping
           </h2>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
-            Checkpoint 7 &mdash; Group approved expenses for finance review and audit.
+          <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
+            Aggregate approved expense vouchers into audit-ready reconciliation batches.
           </p>
         </div>
 
@@ -297,8 +290,7 @@ function FinanceBatchView({ authToken, currentUser }) {
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
             type="button"
-            className={`btn ${activeTab === 'list' ? 'btn-primary' : 'btn-outline'}`}
-            style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+            className={`btn ${activeTab === 'list' ? 'btn-gold' : 'btn-outline'} btn-sm`}
             onClick={() => {
               setActiveTab('list');
               fetchBatches();
@@ -308,80 +300,84 @@ function FinanceBatchView({ authToken, currentUser }) {
           </button>
           <button
             type="button"
-            className={`btn ${activeTab === 'create' ? 'btn-primary' : 'btn-outline'}`}
-            style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+            className={`btn ${activeTab === 'create' ? 'btn-gold' : 'btn-outline'} btn-sm`}
             onClick={() => {
               setActiveTab('create');
               fetchEligibleExpenses();
             }}
           >
-            + Create Batch ({eligibleExpenses.length} eligible)
+            + Create Batch ({eligibleExpenses.length} ready)
           </button>
         </div>
       </div>
 
       {/* Messages */}
       {error && (
-        <div className="alert alert-danger" style={{ marginBottom: '14px' }}>
-          {error}
+        <div className="alert alert-danger">
+          <strong>Error:</strong> {error}
         </div>
       )}
       {successMsg && (
-        <div className="alert alert-success" style={{ marginBottom: '14px' }}>
+        <div className="alert alert-success">
           {successMsg}
         </div>
       )}
 
       {/* TAB 1: BATCHES LIST */}
       {activeTab === 'list' && (
-        <div>
+        <div className="table-card">
+          <div className="table-header-bar">
+            <span className="table-title">Reconciliation Batches ({batches.length})</span>
+            <button type="button" className="btn btn-outline btn-sm" onClick={fetchBatches} disabled={loading}>
+              🔄 Refresh
+            </button>
+          </div>
+
           {batches.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--text-muted)' }}>
-              No finance batches created yet. Click <strong>"+ Create Batch"</strong> above to group approved expenses.
+            <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
+              No finance batches created yet. Click <strong>"+ Create Batch"</strong> to group approved expenses.
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {batches.map((b) => (
-                <div
-                  key={b.id}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '12px 16px',
-                    borderRadius: '8px',
-                    background: '#0f172a',
-                    border: '1px solid var(--border-color)',
-                  }}
-                >
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>Batch {b.id.slice(0, 8)}...</span>
-                      <span
-                        className={`status-badge ${b.status === 'REVIEWED' ? 'ok' : 'pending'}`}
-                        style={{ fontSize: '0.75rem', padding: '2px 8px' }}
-                      >
-                        {b.status}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                      {b.expenseCount} expenses &bull; Total: <strong>${b.totalAmount.toFixed(2)}</strong> &bull; Created by {b.createdBy.name} on {new Date(b.createdAt).toLocaleDateString()}
-                      {b.reviewedBy && (
-                        <span> &bull; Reviewed by {b.reviewedBy.name}</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="btn btn-outline"
-                    style={{ fontSize: '0.8rem', padding: '6px 12px' }}
-                    onClick={() => fetchBatchDetail(b.id)}
-                  >
-                    View Details &rarr;
-                  </button>
-                </div>
-              ))}
+            <div className="data-table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Batch ID</th>
+                    <th>Status</th>
+                    <th>Expenses</th>
+                    <th>Total Amount</th>
+                    <th>Created By</th>
+                    <th>Reviewer</th>
+                    <th style={{ textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {batches.map((b) => (
+                    <tr key={b.id}>
+                      <td style={{ fontWeight: 600, fontFamily: 'monospace' }}>{b.id.slice(0, 13)}...</td>
+                      <td>
+                        <span className={`status-pill ${b.status === 'REVIEWED' ? 'approved' : 'pending'}`}>
+                          <span className="status-dot"></span>
+                          <span>{b.status}</span>
+                        </span>
+                      </td>
+                      <td>{b.expenseCount} items</td>
+                      <td className="table-amount">${b.totalAmount.toFixed(2)}</td>
+                      <td>{b.createdBy.name}</td>
+                      <td>{b.reviewedBy ? b.reviewedBy.name : '—'}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          onClick={() => fetchBatchDetail(b.id)}
+                        >
+                          View Batch &rarr;
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
@@ -389,92 +385,85 @@ function FinanceBatchView({ authToken, currentUser }) {
 
       {/* TAB 2: CREATE BATCH */}
       {activeTab === 'create' && (
-        <form onSubmit={handleCreateBatch}>
-          <div style={{ marginBottom: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>
-                Select Eligible Approved Expenses ({eligibleExpenses.length} available)
-              </label>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  style={{ fontSize: '0.75rem', padding: '2px 8px' }}
-                  onClick={() => {
-                    const allIds = new Set(eligibleExpenses.map((e) => e.receiptId));
-                    setSelectedReceiptIds(allIds);
-                  }}
-                >
-                  Select All
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  style={{ fontSize: '0.75rem', padding: '2px 8px' }}
-                  onClick={() => setSelectedReceiptIds(new Set())}
-                >
-                  Deselect All
-                </button>
-              </div>
+        <form onSubmit={handleCreateBatch} className="table-card" style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+            <div>
+              <h3 className="table-title">Select Approved Expenses to Batch</h3>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                Only Manager-approved expenses are eligible for Finance Batching.
+              </p>
             </div>
-
-            {eligibleExpenses.length === 0 ? (
-              <div style={{ padding: '20px', textAlign: 'center', background: '#0f172a', borderRadius: '6px', color: 'var(--text-muted)' }}>
-                No approved expenses currently available for batching. Expenses must be approved by a Manager first.
-              </div>
-            ) : (
-              <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                  <thead>
-                    <tr style={{ background: '#1e293b', borderBottom: '1px solid var(--border-color)', textAlign: 'left' }}>
-                      <th style={{ padding: '8px 12px', width: '40px' }}></th>
-                      <th style={{ padding: '8px 12px' }}>Merchant</th>
-                      <th style={{ padding: '8px 12px' }}>Date</th>
-                      <th style={{ padding: '8px 12px' }}>Category</th>
-                      <th style={{ padding: '8px 12px' }}>Submitter</th>
-                      <th style={{ padding: '8px 12px', textAlign: 'right' }}>Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {eligibleExpenses.map((exp) => {
-                      const isChecked = selectedReceiptIds.has(exp.receiptId);
-                      return (
-                        <tr
-                          key={exp.receiptId}
-                          onClick={() => {
-                            const next = new Set(selectedReceiptIds);
-                            if (isChecked) next.delete(exp.receiptId);
-                            else next.add(exp.receiptId);
-                            setSelectedReceiptIds(next);
-                          }}
-                          style={{
-                            background: isChecked ? '#1e293b' : 'transparent',
-                            borderBottom: '1px solid #334155',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => {}}
-                            />
-                          </td>
-                          <td style={{ padding: '8px 12px' }}>{exp.merchant}</td>
-                          <td style={{ padding: '8px 12px' }}>{exp.date || 'N/A'}</td>
-                          <td style={{ padding: '8px 12px' }}>{exp.category}</td>
-                          <td style={{ padding: '8px 12px' }}>{exp.submitter.name}</td>
-                          <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>
-                            ${typeof exp.amount === 'number' ? exp.amount.toFixed(2) : '0.00'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => setSelectedReceiptIds(new Set(eligibleExpenses.map((e) => e.receiptId)))}
+              >
+                Select All
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => setSelectedReceiptIds(new Set())}
+              >
+                Deselect All
+              </button>
+            </div>
           </div>
+
+          {eligibleExpenses.length === 0 ? (
+            <div style={{ padding: '40px 20px', textAlign: 'center', background: '#f8fafc', borderRadius: 'var(--radius-md)', color: 'var(--text-muted)' }}>
+              No approved expenses currently available for batching.
+            </div>
+          ) : (
+            <div className="data-table-wrapper" style={{ maxHeight: '340px', overflowY: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', marginBottom: '16px' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: '40px', textAlign: 'center' }}></th>
+                    <th>Merchant</th>
+                    <th>Date</th>
+                    <th>Category</th>
+                    <th>Submitter</th>
+                    <th style={{ textAlign: 'right' }}>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {eligibleExpenses.map((exp) => {
+                    const isChecked = selectedReceiptIds.has(exp.receiptId);
+                    return (
+                      <tr
+                        key={exp.receiptId}
+                        className={isChecked ? 'selected' : ''}
+                        onClick={() => {
+                          const next = new Set(selectedReceiptIds);
+                          if (isChecked) next.delete(exp.receiptId);
+                          else next.add(exp.receiptId);
+                          setSelectedReceiptIds(next);
+                        }}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <td style={{ textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {}}
+                          />
+                        </td>
+                        <td style={{ fontWeight: 600 }}>{exp.merchant}</td>
+                        <td>{exp.date || '—'}</td>
+                        <td><span className="status-pill draft">{exp.category}</span></td>
+                        <td>{exp.submitter.name}</td>
+                        <td className="table-amount" style={{ textAlign: 'right' }}>
+                          ${typeof exp.amount === 'number' ? exp.amount.toFixed(2) : '0.00'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* Creation Summary Bar */}
           <div
@@ -482,29 +471,29 @@ function FinanceBatchView({ authToken, currentUser }) {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              padding: '12px 16px',
-              borderRadius: '6px',
-              background: '#0f172a',
-              border: '1px solid var(--border-color)',
-              marginBottom: '16px',
+              padding: '16px 20px',
+              borderRadius: 'var(--radius-md)',
+              background: '#f8fafc',
+              border: '1px solid var(--border-subtle)',
+              flexWrap: 'wrap',
+              gap: '12px',
             }}
           >
             <div>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Selected Expenses: </span>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Selected Items: </span>
               <strong>{selectedReceiptIds.size}</strong> &bull;{' '}
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Deterministic Total: </span>
-              <strong style={{ color: 'var(--color-primary, #38bdf8)', fontSize: '1.1rem' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Deterministic Batch Total: </span>
+              <strong style={{ color: 'var(--text-primary)', fontSize: '1.25rem', fontFamily: 'var(--font-display)' }}>
                 ${selectedTotal.toFixed(2)}
               </strong>
             </div>
 
             <button
               type="submit"
-              className="btn btn-primary"
+              className="btn btn-gold btn-lg"
               disabled={creating || selectedReceiptIds.size === 0}
-              style={{ padding: '8px 20px', fontWeight: 600 }}
             >
-              {creating ? 'Creating Batch...' : `Create Batch (${selectedReceiptIds.size})`}
+              {creating ? 'Creating Batch...' : `Create Finance Batch (${selectedReceiptIds.size})`}
             </button>
           </div>
         </form>
@@ -512,13 +501,13 @@ function FinanceBatchView({ authToken, currentUser }) {
 
       {/* TAB 3: BATCH DETAIL */}
       {activeTab === 'detail' && selectedBatch && (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+        <div className="table-card" style={{ padding: '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '14px' }}>
             <div>
               <button
                 type="button"
-                className="btn btn-outline"
-                style={{ fontSize: '0.75rem', padding: '4px 8px', marginBottom: '8px' }}
+                className="btn btn-outline btn-sm"
+                style={{ marginBottom: '10px' }}
                 onClick={() => {
                   setActiveTab('list');
                   fetchBatches();
@@ -526,26 +515,24 @@ function FinanceBatchView({ authToken, currentUser }) {
               >
                 &larr; Back to Batches
               </button>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, margin: 0 }}>
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>
                 Batch ID: {selectedBatch.id}
               </h3>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+              <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '4px' }}>
                 Created by {selectedBatch.createdBy.name} on {new Date(selectedBatch.createdAt).toLocaleString()}
               </div>
             </div>
 
             <div style={{ textAlign: 'right' }}>
-              <span
-                className={`status-badge ${selectedBatch.status === 'REVIEWED' ? 'ok' : 'pending'}`}
-                style={{ fontSize: '0.85rem', padding: '4px 12px' }}
-              >
-                {selectedBatch.status}
+              <span className={`status-pill ${selectedBatch.status === 'REVIEWED' ? 'approved' : 'pending'}`}>
+                <span className="status-dot"></span>
+                <span>{selectedBatch.status}</span>
               </span>
-              <div style={{ fontSize: '1.2rem', fontWeight: 700, marginTop: '6px', color: 'var(--color-primary, #38bdf8)' }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: '6px', fontFamily: 'var(--font-display)' }}>
                 ${selectedBatch.totalAmount.toFixed(2)}
               </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                {selectedBatch.expenseCount} expense(s)
+              <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                {selectedBatch.expenseCount} approved expense(s)
               </div>
             </div>
           </div>
@@ -557,24 +544,21 @@ function FinanceBatchView({ authToken, currentUser }) {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                background: '#1e293b',
-                padding: '12px 16px',
-                borderRadius: '6px',
-                marginBottom: '16px',
+                background: '#f8fafc',
+                padding: '14px 18px',
+                borderRadius: 'var(--radius-md)',
+                marginBottom: '20px',
+                border: '1px solid var(--border-subtle)',
+                flexWrap: 'wrap',
+                gap: '12px',
               }}
             >
-              <form onSubmit={handleAddItem} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <form onSubmit={handleAddItem} style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <select
+                  className="form-select"
                   value={selectedAddReceiptId}
                   onChange={(e) => setSelectedAddReceiptId(e.target.value)}
-                  style={{
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    background: '#0f172a',
-                    color: '#fff',
-                    border: '1px solid var(--border-color)',
-                    fontSize: '0.8rem',
-                  }}
+                  style={{ width: 'auto', minWidth: '240px' }}
                 >
                   <option value="">Select approved expense to add...</option>
                   {eligibleExpenses
@@ -589,7 +573,6 @@ function FinanceBatchView({ authToken, currentUser }) {
                   type="submit"
                   className="btn btn-outline"
                   disabled={addingItem || !selectedAddReceiptId}
-                  style={{ fontSize: '0.8rem', padding: '6px 12px' }}
                 >
                   {addingItem ? 'Adding...' : '+ Add Expense'}
                 </button>
@@ -597,8 +580,7 @@ function FinanceBatchView({ authToken, currentUser }) {
 
               <button
                 type="button"
-                className="btn btn-primary"
-                style={{ fontSize: '0.85rem', padding: '8px 16px' }}
+                className="btn btn-gold"
                 onClick={() => setShowReviewModal(true)}
               >
                 Complete Finance Review &rarr;
@@ -606,14 +588,15 @@ function FinanceBatchView({ authToken, currentUser }) {
             </div>
           )}
 
+          {/* Reviewed Status Banner */}
           {selectedBatch.status === 'REVIEWED' && (
             <div
               style={{
-                background: 'rgba(59, 130, 246, 0.1)',
-                border: '1px solid rgba(59, 130, 246, 0.3)',
-                padding: '16px',
-                borderRadius: '8px',
-                marginBottom: '16px',
+                background: '#f0fdf4',
+                border: '1px solid #86efac',
+                padding: '16px 20px',
+                borderRadius: 'var(--radius-md)',
+                marginBottom: '20px',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
@@ -622,18 +605,14 @@ function FinanceBatchView({ authToken, currentUser }) {
               }}
             >
               <div>
-                <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#93c5fd', marginBottom: '4px' }}>
-                  &bull; Finance Review Completed
+                <div style={{ fontWeight: 700, fontSize: '0.9375rem', color: '#15803d', marginBottom: '2px' }}>
+                  ✓ Finance Review Completed &amp; Batch Locked
                 </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                <div style={{ fontSize: '0.8125rem', color: '#166534' }}>
                   Reviewed by {selectedBatch.reviewedBy?.name} on {new Date(selectedBatch.reviewedAt).toLocaleString()}.
-                  {batchJournalEntry ? (
-                    <span style={{ display: 'block', marginTop: '4px', color: '#10b981', fontWeight: 600 }}>
-                      &check; Journal Entry Generated: {batchJournalEntry.id.slice(0, 8)}... (Status: {batchJournalEntry.status}, Total: ${batchJournalEntry.totalDebit.toFixed(2)})
-                    </span>
-                  ) : (
-                    <span style={{ display: 'block', marginTop: '4px', color: 'var(--text-muted)' }}>
-                      Ready for Checkpoint 8 double-entry Journal Entry generation.
+                  {batchJournalEntry && (
+                    <span style={{ display: 'block', marginTop: '4px', fontWeight: 600 }}>
+                      Journal Entry Generated: {batchJournalEntry.id.slice(0, 8)}... (Status: {batchJournalEntry.status}, Total: ${batchJournalEntry.totalDebit.toFixed(2)})
                     </span>
                   )}
                 </div>
@@ -642,52 +621,49 @@ function FinanceBatchView({ authToken, currentUser }) {
               {!batchJournalEntry && (
                 <button
                   type="button"
-                  className="btn btn-primary"
-                  style={{ fontSize: '0.8rem', padding: '8px 16px' }}
+                  className="btn btn-gold"
                   onClick={handleGenerateJournalEntry}
                   disabled={generatingJournal}
                 >
-                  {generatingJournal ? 'Generating...' : 'Generate Journal Entry (CP8) \u2192'}
+                  {generatingJournal ? 'Generating...' : '⚡ Generate Balanced Journal Entry'}
                 </button>
               )}
             </div>
           )}
 
-
           {/* Included Expenses Table */}
-          <h4 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '8px' }}>
+          <h4 style={{ fontSize: '0.9375rem', fontWeight: 700, marginBottom: '10px' }}>
             Included Expenses ({selectedBatch.items.length})
           </h4>
-          <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', overflow: 'hidden', marginBottom: '20px' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+          <div className="data-table-wrapper" style={{ border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', overflow: 'hidden', marginBottom: '20px' }}>
+            <table className="data-table">
               <thead>
-                <tr style={{ background: '#1e293b', borderBottom: '1px solid var(--border-color)', textAlign: 'left' }}>
-                  <th style={{ padding: '8px 12px' }}>Merchant</th>
-                  <th style={{ padding: '8px 12px' }}>Date</th>
-                  <th style={{ padding: '8px 12px' }}>Category</th>
-                  <th style={{ padding: '8px 12px' }}>Submitter</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'right' }}>Amount</th>
+                <tr>
+                  <th>Merchant</th>
+                  <th>Date</th>
+                  <th>Category</th>
+                  <th>Submitter</th>
+                  <th style={{ textAlign: 'right' }}>Amount</th>
                   {selectedBatch.status === 'OPEN' && (
-                    <th style={{ padding: '8px 12px', textAlign: 'center', width: '80px' }}>Action</th>
+                    <th style={{ textAlign: 'center', width: '80px' }}>Action</th>
                   )}
                 </tr>
               </thead>
               <tbody>
                 {selectedBatch.items.map((item) => (
-                  <tr key={item.id} style={{ borderBottom: '1px solid #334155' }}>
-                    <td style={{ padding: '8px 12px', fontWeight: 500 }}>{item.merchant}</td>
-                    <td style={{ padding: '8px 12px' }}>{item.date || 'N/A'}</td>
-                    <td style={{ padding: '8px 12px' }}>{item.category}</td>
-                    <td style={{ padding: '8px 12px' }}>{item.submitter.name}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>
+                  <tr key={item.id}>
+                    <td style={{ fontWeight: 600 }}>{item.merchant}</td>
+                    <td>{item.date || '—'}</td>
+                    <td><span className="status-pill draft">{item.category}</span></td>
+                    <td>{item.submitter.name}</td>
+                    <td className="table-amount" style={{ textAlign: 'right' }}>
                       ${item.amount.toFixed(2)}
                     </td>
                     {selectedBatch.status === 'OPEN' && (
-                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                      <td style={{ textAlign: 'center' }}>
                         <button
                           type="button"
-                          className="btn btn-outline"
-                          style={{ fontSize: '0.7rem', padding: '2px 8px', color: '#f87171', borderColor: '#f87171' }}
+                          className="btn btn-danger btn-sm"
                           onClick={() => handleRemoveItem(item.receiptId)}
                         >
                           Remove
@@ -701,68 +677,41 @@ function FinanceBatchView({ authToken, currentUser }) {
           </div>
 
           {/* Audit Trail Timeline */}
-          <h4 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '8px' }}>
+          <h4 style={{ fontSize: '0.9375rem', fontWeight: 700, marginBottom: '10px' }}>
             Audit Trail ({selectedBatch.auditHistory.length} events)
           </h4>
-          <div style={{ background: '#0f172a', padding: '12px 16px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+          <div className="timeline-list">
             {selectedBatch.auditHistory.map((a) => (
-              <div key={a.id} style={{ display: 'flex', gap: '12px', marginBottom: '8px', fontSize: '0.8rem' }}>
-                <span style={{ color: 'var(--text-muted)', minWidth: '140px' }}>
-                  {new Date(a.createdAt).toLocaleString()}
+              <div key={a.id} className="timeline-item">
+                <div className="timeline-dot"></div>
+                <span className="timeline-time">
+                  {new Date(a.createdAt).toLocaleString()} &bull; <strong>{a.actorName}</strong> ({a.actorRole})
                 </span>
-                <span style={{ fontWeight: 600, color: '#38bdf8', minWidth: '90px' }}>
-                  [{a.action}]
-                </span>
-                <span>
-                  <strong>{a.actorName}</strong> ({a.actorRole}): {a.details || 'Action recorded'}
-                </span>
+                <div className="timeline-text">
+                  <strong>{a.action}</strong>: {a.details || 'Action recorded'}
+                </div>
               </div>
             ))}
           </div>
 
-          {/* Review Modal */}
+          {/* Complete Review Modal */}
           {showReviewModal && (
-            <div
-              style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: 'rgba(0, 0, 0, 0.7)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 1000,
-              }}
-            >
-              <div
-                style={{
-                  background: '#1e293b',
-                  padding: '24px',
-                  borderRadius: '8px',
-                  width: '90%',
-                  maxWidth: '440px',
-                  border: '1px solid var(--border-color)',
-                }}
-              >
-                <h3 style={{ margin: '0 0 12px 0', fontSize: '1.1rem' }}>Complete Finance Review</h3>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
-                  Completing review will transition this batch from <strong>OPEN</strong> to <strong>REVIEWED</strong>. Once reviewed, no further expenses can be added or removed.
-                </p>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+            <div className="modal-overlay">
+              <div className="modal-dialog">
+                <div className="modal-header">
+                  <h4 className="modal-title">Complete Finance Review</h4>
+                  <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowReviewModal(false)}>✕</button>
+                </div>
+                <div className="modal-body">
+                  <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                    Completing review will transition this batch from <strong>OPEN</strong> to <strong>REVIEWED</strong>. Once reviewed, the batch is permanently locked against adding or removing expenses.
+                  </p>
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-outline" onClick={() => setShowReviewModal(false)}>Cancel</button>
                   <button
                     type="button"
-                    className="btn btn-outline"
-                    onClick={() => setShowReviewModal(false)}
-                    disabled={reviewing}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
+                    className="btn btn-gold"
                     onClick={handleReviewBatch}
                     disabled={reviewing}
                   >

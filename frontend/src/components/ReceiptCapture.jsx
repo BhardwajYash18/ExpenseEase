@@ -9,13 +9,13 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded }) {
   const [error, setError] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
 
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
 
-  const handleFileSelection = (e) => {
+  const processFile = (file) => {
     setError(null);
-    const file = e.target.files?.[0];
     if (!file) return;
 
     // Check size limit
@@ -39,6 +39,28 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded }) {
     setPreviewUrl(objectUrl);
   };
 
+  const handleFileSelection = (e) => {
+    const file = e.target.files?.[0];
+    processFile(file);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    processFile(file);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setDragOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+  };
+
   const handleClear = () => {
     setSelectedFile(null);
     if (previewUrl) {
@@ -60,7 +82,7 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded }) {
 
     setUploading(true);
     setError(null);
-    setUploadProgress('Uploading receipt & performing OCR...');
+    setUploadProgress('Uploading receipt & performing OCR preprocessing...');
 
     const formData = new FormData();
     formData.append('receipt', selectedFile);
@@ -84,6 +106,7 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded }) {
       if (onReceiptUploaded) {
         onReceiptUploaded(data.receipt);
       }
+      handleClear();
     } catch (err) {
       setError(err.message || 'An error occurred during receipt upload');
     } finally {
@@ -92,11 +115,24 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded }) {
   };
 
   return (
-    <div className="card receipt-capture-card" id="receipt-capture-component">
-      <h3 className="section-title">Receipt Capture & OCR</h3>
-      <p className="section-subtitle">
-        Upload or capture a receipt image (JPEG, PNG, WebP &le; 10MB) for text extraction.
-      </p>
+    <div className="table-card" id="receipt-capture-component" style={{ padding: '24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+        <div>
+          <h3 className="table-title">Upload or Snap Receipt</h3>
+          <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+            Optical Character Recognition automatically extracts expense lines, taxes, and vendor details.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <span className="status-pill policy-pass">
+            <span className="status-dot"></span>
+            <span>GSTIN Validated</span>
+          </span>
+          <span className="status-pill draft">
+            <span>Tesseract OCR 300 DPI</span>
+          </span>
+        </div>
+      </div>
 
       {/* Hidden native file inputs */}
       <input
@@ -117,77 +153,113 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded }) {
         onChange={handleFileSelection}
       />
 
-      {/* Capture trigger buttons */}
-      <div className="button-group" style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
-        <button
-          type="button"
-          className="btn btn-primary"
-          id="btn-choose-file"
-          disabled={uploading}
-          onClick={() => fileInputRef.current?.click()}
+      {/* Drop Zone */}
+      {!previewUrl ? (
+        <div
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          style={{
+            border: `2px dashed ${dragOver ? 'var(--gold-primary)' : 'var(--border-default)'}`,
+            borderRadius: 'var(--radius-lg)',
+            padding: '36px 20px',
+            textAlign: 'center',
+            backgroundColor: dragOver ? 'var(--gold-bg-subtle)' : '#fafafa',
+            transition: 'all 0.2s ease',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '12px',
+          }}
         >
-          📁 Choose Receipt File
-        </button>
-
-        <button
-          type="button"
-          className="btn btn-secondary"
-          id="btn-take-photo"
-          disabled={uploading}
-          onClick={() => cameraInputRef.current?.click()}
-        >
-          📷 Capture with Camera
-        </button>
-      </div>
-
-      {/* Error display */}
-      {error && (
-        <div className="alert alert-danger" id="receipt-error-alert" style={{ marginTop: '14px' }}>
-          <strong>Error:</strong> {error}
-        </div>
-      )}
-
-      {/* Progress display */}
-      {uploadProgress && !error && (
-        <div className="alert alert-info" id="receipt-status-alert" style={{ marginTop: '14px' }}>
-          {uploading ? '⏳ ' : '✅ '} {uploadProgress}
-        </div>
-      )}
-
-      {/* Image Preview */}
-      {previewUrl && (
-        <div className="preview-container" style={{ marginTop: '16px' }}>
-          <h4>Selected Receipt Preview:</h4>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            {selectedFile?.name} ({(selectedFile?.size / 1024).toFixed(1)} KB)
-          </p>
-          <div style={{ maxHeight: '350px', overflow: 'hidden', borderRadius: '8px', border: '1px solid #ddd', marginTop: '8px' }}>
-            <img
-              src={previewUrl}
-              alt="Receipt Preview"
-              style={{ width: '100%', maxHeight: '350px', objectFit: 'contain' }}
-            />
+          <div
+            style={{
+              width: '54px',
+              height: '54px',
+              borderRadius: 'var(--radius-full)',
+              backgroundColor: 'var(--gold-bg-subtle)',
+              color: 'var(--gold-hover)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '1.5rem',
+            }}
+          >
+            📸
           </div>
-
-          <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
+          <div>
+            <p style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--text-primary)' }}>
+              Drag and drop your receipt image here, or browse
+            </p>
+            <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+              Supports high-resolution JPEG, PNG, WebP up to 10MB
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', marginTop: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
             <button
               type="button"
-              className="btn btn-success"
-              id="btn-submit-receipt"
-              disabled={uploading}
-              onClick={handleUpload}
+              className="btn btn-gold"
+              id="btn-choose-file"
+              onClick={() => fileInputRef.current?.click()}
             >
-              {uploading ? 'Processing OCR...' : '🚀 Submit Receipt for OCR'}
+              📁 Browse Files
             </button>
             <button
               type="button"
               className="btn btn-outline"
-              disabled={uploading}
-              onClick={handleClear}
+              id="btn-take-photo"
+              onClick={() => cameraInputRef.current?.click()}
             >
-              Cancel
+              📷 Open Camera
             </button>
           </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#f8fafc', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+            <div>
+              <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedFile?.name}</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                {(selectedFile?.size / 1024).toFixed(1)} KB &bull; {selectedFile?.type}
+              </div>
+            </div>
+            <button type="button" className="btn btn-outline btn-sm" onClick={handleClear} disabled={uploading}>
+              ✕ Remove
+            </button>
+          </div>
+
+          <div className="scan-preview-box">
+            <img src={previewUrl} alt="Receipt Preview" className="scan-image" />
+          </div>
+
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+            <button type="button" className="btn btn-outline" onClick={handleClear} disabled={uploading}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-gold"
+              id="btn-submit-receipt"
+              disabled={uploading}
+              onClick={handleUpload}
+            >
+              {uploading ? 'Processing OCR & Preprocessing...' : '🚀 Submit Receipt for OCR'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Error alert */}
+      {error && (
+        <div className="alert alert-danger" id="receipt-error-alert" style={{ marginTop: '16px' }}>
+          <strong>Error:</strong> {error}
+        </div>
+      )}
+
+      {/* Status alert */}
+      {uploadProgress && !error && (
+        <div className="alert alert-info" id="receipt-status-alert" style={{ marginTop: '16px' }}>
+          {uploading ? '⏳ ' : '✅ '} {uploadProgress}
         </div>
       )}
     </div>

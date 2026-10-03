@@ -8,6 +8,7 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "migrate": "node ../database/migrator.js",
+    "seed:demo": "node ../database/seeds/seedDemo.js",
     "test": "jest --runInBand --detectOpenHandles --forceExit"
   },
   "dependencies": {

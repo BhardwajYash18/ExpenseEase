@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ReceiptCapture from './components/ReceiptCapture';
 import ReceiptView from './components/ReceiptView';
+import ManagerApprovalsView from './components/ManagerApprovalsView';
 import FinanceBatchView from './components/FinanceBatchView';
 import JournalEntryView from './components/JournalEntryView';
 
@@ -12,16 +13,20 @@ function App() {
   const [latestReceipt, setLatestReceipt] = useState(null);
   const [receiptsList, setReceiptsList] = useState([]);
   const [loadingReceipts, setLoadingReceipts] = useState(false);
-  const [financeView, setFinanceView] = useState('batches'); // 'batches' or 'accounting'
 
+  // Active navigation view: 'dashboard' | 'upload' | 'receipt-detail' | 'approvals' | 'finance' | 'mappings' | 'integrations'
+  const [activeNav, setActiveNav] = useState('dashboard');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Form states for login testing
-  const [email, setEmail] = useState('employee@acme.test');
-  const [password, setPassword] = useState('password123');
-  const [slug, setSlug] = useState('acme-corp');
+  // Login form states (default to development demo credentials)
+  const [email, setEmail] = useState('employee@demo.com');
+  const [password, setPassword] = useState('employee123');
+  const [slug, setSlug] = useState('demo');
   const [loginError, setLoginError] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
 
+  // Fetch receipts for authenticated user / tenant
   async function fetchReceipts(token) {
     if (!token) return;
     setLoadingReceipts(true);
@@ -44,20 +49,18 @@ function App() {
     }
   }
 
+  // Health and session verification
   useEffect(() => {
-    // Check backend health endpoint
     fetch('/api/health')
       .then((res) => (res.ok ? res.json() : Promise.reject(`HTTP ${res.status}`)))
-      .then((data) => setBackendHealth(data.status === 'ok' ? 'online' : 'unexpected_response'))
+      .then((data) => setBackendHealth(data.status === 'ok' ? 'online' : 'degraded'))
       .catch(() => setBackendHealth('offline'));
 
-    // Check backend readiness endpoint
     fetch('/api/health/ready')
       .then((res) => res.json())
       .then((data) => setReadinessData(data))
       .catch(() => setReadinessData(null));
 
-    // If token exists, fetch /api/auth/me
     if (authToken) {
       fetch('/api/auth/me', {
         headers: { Authorization: `Bearer ${authToken}` },
@@ -75,16 +78,18 @@ function App() {
     }
   }, [authToken]);
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
+  const handleLogin = async (e, customCreds = null) => {
+    if (e && e.preventDefault) e.preventDefault();
     setLoginLoading(true);
     setLoginError(null);
+
+    const creds = customCreds || { email, password, slug };
 
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, slug }),
+        body: JSON.stringify(creds),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -93,6 +98,15 @@ function App() {
       setAuthToken(data.token);
       setCurrentUser(data.user);
       localStorage.setItem('token', data.token);
+
+      // Default landing view based on role
+      if (data.user.role === 'MANAGER') {
+        setActiveNav('approvals');
+      } else if (data.user.role === 'FINANCE') {
+        setActiveNav('finance');
+      } else {
+        setActiveNav('dashboard');
+      }
     } catch (err) {
       setLoginError(err.message);
     } finally {
@@ -105,195 +119,596 @@ function App() {
     setCurrentUser(null);
     localStorage.removeItem('token');
     setLatestReceipt(null);
+    setActiveNav('dashboard');
   };
 
+  // Helper quick login for reviewers / testers using development demo accounts
+  const handleQuickLogin = (roleType) => {
+    let emailToUse = 'employee@demo.com';
+    let pwdToUse = 'employee123';
+    if (roleType === 'MANAGER') {
+      emailToUse = 'manager@demo.com';
+      pwdToUse = 'manager123';
+    }
+    if (roleType === 'FINANCE') {
+      emailToUse = 'finance@demo.com';
+      pwdToUse = 'finance123';
+    }
+
+    setEmail(emailToUse);
+    setPassword(pwdToUse);
+    setSlug('demo');
+    handleLogin(null, { email: emailToUse, password: pwdToUse, slug: 'demo' });
+  };
+
+  // Calculate real dashboard statistics from receiptsList
+  const totalSubmittedCount = receiptsList.length;
+  const pendingCount = receiptsList.filter((r) => (r.workflow_state || r.workflowState) === 'PENDING_APPROVAL').length;
+  const approvedCount = receiptsList.filter((r) => (r.workflow_state || r.workflowState) === 'APPROVED').length;
+
+  const filteredReceipts = receiptsList.filter((r) => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    const name = (r.original_filename || r.originalFilename || '').toLowerCase();
+    const id = (r.id || '').toLowerCase();
+    return name.includes(query) || id.includes(query);
+  });
+
   return (
-    <div className="container">
-      <header className="header">
-        <h1 className="header-title">ExpensEase</h1>
-        <p className="header-subtitle">Smart Employee Expense Management Platform</p>
-      </header>
-
-      {/* Checkpoint Status Banner */}
-      <div className="card" style={{ marginBottom: '20px' }}>
-        <div className="status-badge ok">
-          <span className="status-indicator"></span>
-          <span>Checkpoint 9 — CSV Export + QuickBooks/Xero Integration Points</span>
-        </div>
-
-        <ul className="info-list">
-          <li className="info-item">
-            <span className="info-label">Backend API Status</span>
-            <span className="info-value">{backendHealth}</span>
-          </li>
-          <li className="info-item">
-            <span className="info-label">AI & OCR Service</span>
-            <span className="info-value">{readinessData?.dependencies?.aiService?.status || 'Active (FastAPI + AI)'}</span>
-          </li>
-          <li className="info-item">
-            <span className="info-label">Active User Context</span>
-            <span className="info-value">
-              {currentUser ? `${currentUser.email} (${currentUser.role})` : 'Unauthenticated'}
-            </span>
-          </li>
-        </ul>
-      </div>
-
-      {/* Authentication / Role Login Card */}
-      {!currentUser ? (
-        <div className="card" style={{ marginBottom: '20px' }}>
-          <h3 className="section-title">Sign In to ExpensEase</h3>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
-            Sign in as <strong>EMPLOYEE</strong>, <strong>MANAGER</strong>, or <strong>FINANCE</strong>.
-          </p>
-
-          {loginError && <div className="alert alert-danger" style={{ marginBottom: '14px' }}>{loginError}</div>}
-
-          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Tenant Slug</label>
-              <input
-                type="text"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-                required
-                style={{ width: '100%', padding: '8px 12px', borderRadius: '4px', border: '1px solid #475569', background: '#0f172a', color: '#fff' }}
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                style={{ width: '100%', padding: '8px 12px', borderRadius: '4px', border: '1px solid #475569', background: '#0f172a', color: '#fff' }}
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                style={{ width: '100%', padding: '8px 12px', borderRadius: '4px', border: '1px solid #475569', background: '#0f172a', color: '#fff' }}
-              />
-            </div>
-            <button type="submit" className="btn btn-primary" disabled={loginLoading} style={{ marginTop: '8px' }}>
-              {loginLoading ? 'Signing in...' : 'Sign In'}
-            </button>
-          </form>
-        </div>
-      ) : (
-        <div className="card" style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <strong>Signed in as:</strong> {currentUser.firstName} {currentUser.lastName} ({currentUser.email})
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Role: {currentUser.role}</div>
-          </div>
-          <button type="button" className="btn btn-outline" onClick={handleLogout}>
-            Sign Out
-          </button>
-        </div>
+    <div className="app-shell">
+      {/* Mobile Backdrop */}
+      {mobileMenuOpen && (
+        <div className="sidebar-backdrop" onClick={() => setMobileMenuOpen(false)}></div>
       )}
 
-      {/* Finance Operations Workspace (FINANCE role per AGENTS.md Section 13/14/15) */}
-      {currentUser && currentUser.role === 'FINANCE' && (
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-            <button
-              type="button"
-              className={`btn ${financeView === 'batches' ? 'btn-primary' : 'btn-outline'}`}
-              onClick={() => setFinanceView('batches')}
-              style={{ flex: 1, padding: '10px 16px', fontSize: '0.9rem' }}
-            >
-              Finance Batches (Checkpoint 7)
-            </button>
-            <button
-              type="button"
-              className={`btn ${financeView === 'accounting' ? 'btn-primary' : 'btn-outline'}`}
-              onClick={() => setFinanceView('accounting')}
-              style={{ flex: 1, padding: '10px 16px', fontSize: '0.9rem' }}
-            >
-              Journal Entries &amp; Integrations (CP8 &amp; CP9)
-            </button>
+      {/* Dark Sidebar (Stitch Design Spec) */}
+      <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''}`}>
+        <div className="sidebar-header">
+          <div className="brand-badge">E</div>
+          <div className="brand-title">
+            <span className="brand-name">ExpensEase</span>
+            <span className="brand-tagline">SMB PLATFORM</span>
+          </div>
+        </div>
+
+        <nav className="sidebar-nav">
+          <div>
+            <div className="nav-section-title">Operations &amp; Finance</div>
+            <ul className="nav-list">
+              <li>
+                <button
+                  type="button"
+                  className={`nav-item-btn ${activeNav === 'dashboard' ? 'active' : ''}`}
+                  onClick={() => {
+                    setActiveNav('dashboard');
+                    setMobileMenuOpen(false);
+                  }}
+                >
+                  <span className="nav-item-icon">📊</span>
+                  <span>Dashboard</span>
+                </button>
+              </li>
+
+              {currentUser && currentUser.role === 'EMPLOYEE' && (
+                <li>
+                  <button
+                    type="button"
+                    className={`nav-item-btn ${activeNav === 'upload' ? 'active' : ''}`}
+                    onClick={() => {
+                      setActiveNav('upload');
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    <span className="nav-item-icon">📸</span>
+                    <span>Submit Expense</span>
+                  </button>
+                </li>
+              )}
+
+              <li>
+                <button
+                  type="button"
+                  className={`nav-item-btn ${activeNav === 'receipt-detail' ? 'active' : ''}`}
+                  onClick={() => {
+                    setActiveNav('receipt-detail');
+                    setMobileMenuOpen(false);
+                  }}
+                >
+                  <span className="nav-item-icon">🧾</span>
+                  <span>Receipt OCR &amp; Inspect</span>
+                </button>
+              </li>
+
+              {currentUser && (currentUser.role === 'MANAGER' || currentUser.role === 'FINANCE') && (
+                <li>
+                  <button
+                    type="button"
+                    className={`nav-item-btn ${activeNav === 'approvals' ? 'active' : ''}`}
+                    onClick={() => {
+                      setActiveNav('approvals');
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    <span className="nav-item-icon">🛡️</span>
+                    <span>Manager Approvals</span>
+                    {pendingCount > 0 && <span className="nav-item-badge">{pendingCount}</span>}
+                  </button>
+                </li>
+              )}
+
+              {currentUser && currentUser.role === 'FINANCE' && (
+                <>
+                  <li>
+                    <button
+                      type="button"
+                      className={`nav-item-btn ${activeNav === 'finance' ? 'active' : ''}`}
+                      onClick={() => {
+                        setActiveNav('finance');
+                        setMobileMenuOpen(false);
+                      }}
+                    >
+                      <span className="nav-item-icon">🏛️</span>
+                      <span>Finance Operations</span>
+                    </button>
+                  </li>
+                </>
+              )}
+            </ul>
           </div>
 
-          {financeView === 'batches' ? (
-            <FinanceBatchView authToken={authToken} currentUser={currentUser} />
+          <div style={{ marginTop: 'auto' }}>
+            <div className="nav-section-title">System &amp; Data Security</div>
+            <div style={{ padding: '0 10px', fontSize: '0.75rem', color: '#64748b', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: backendHealth === 'online' ? '#10b981' : '#ef4444' }}></span>
+                <span>API Status: <strong>{backendHealth}</strong></span>
+              </div>
+              <div>Tenant Isolation: <strong>PostgreSQL RLS</strong></div>
+              <div>AI Layer: <strong>Assistive &amp; Validated</strong></div>
+            </div>
+          </div>
+        </nav>
+
+        {/* User Profile Card in Sidebar Footer */}
+        <div className="sidebar-footer">
+          {currentUser ? (
+            <div className="user-profile-card">
+              <div className="user-avatar">
+                {currentUser.email.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="user-meta">
+                <div className="user-name">{currentUser.email}</div>
+                <div className="user-role-badge">{currentUser.role}</div>
+              </div>
+              <button
+                type="button"
+                className="btn-signout"
+                onClick={handleLogout}
+                title="Sign Out"
+              >
+                🚪
+              </button>
+            </div>
           ) : (
-            <JournalEntryView authToken={authToken} currentUser={currentUser} />
+            <div style={{ fontSize: '0.8rem', color: '#64748b', textAlign: 'center' }}>
+              Not Signed In
+            </div>
           )}
         </div>
-      )}
+      </aside>
 
-      {/* Receipt Capture Component (EMPLOYEE only per AGENTS.md RBAC) */}
-      {currentUser && currentUser.role === 'EMPLOYEE' && (
-        <ReceiptCapture
-          authToken={authToken}
-          onReceiptUploaded={(receipt) => {
-            setLatestReceipt(receipt);
-            fetchReceipts(authToken);
-          }}
-        />
-      )}
-
-      {currentUser && currentUser.role !== 'EMPLOYEE' && (
-        <div className="alert alert-info" style={{ marginBottom: '20px' }}>
-          Role Notice: Signed in as <strong>{currentUser.role}</strong>. Per ExpensEase RBAC (AGENTS.md Section 13), receipt uploading is restricted to <strong>EMPLOYEE</strong> accounts. Managers and Finance reviewers can inspect existing receipts and perform approval/batching actions below.
-        </div>
-      )}
-
-      {/* Receipts Selector / Browser */}
-      {currentUser && receiptsList.length > 0 && (
-        <div className="card" style={{ marginBottom: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-              Select Expense Receipt to Review ({receiptsList.length} available):
-            </label>
+      {/* Main Content Workspace */}
+      <div className="main-workspace">
+        {/* Topbar */}
+        <header className="topbar">
+          <div className="topbar-left">
             <button
               type="button"
-              className="btn btn-outline"
-              style={{ fontSize: '0.75rem', padding: '4px 8px' }}
-              onClick={() => fetchReceipts(authToken)}
-              disabled={loadingReceipts}
+              className="hamburger-btn"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label="Toggle Navigation"
             >
-              {loadingReceipts ? 'Refreshing...' : 'Refresh List'}
+              ☰
             </button>
+            <div className="search-box">
+              <span className="search-icon">🔍</span>
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search transactions, GL codes, receipts..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
           </div>
-          <select
-            value={latestReceipt?.id || ''}
-            onChange={(e) => {
-              const selected = receiptsList.find((r) => r.id === e.target.value);
-              if (selected) setLatestReceipt(selected);
-            }}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              borderRadius: '6px',
-              background: '#0f172a',
-              color: '#fff',
-              border: '1px solid var(--border-color)',
-              fontSize: '0.85rem',
-            }}
-          >
-            {receiptsList.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.original_filename || r.originalFilename || 'Receipt'} &bull; Uploaded: {new Date(r.created_at || r.createdAt).toLocaleDateString()} &bull; ID: {r.id.slice(0, 8)}...
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
 
-      {/* Receipt View Component */}
-      {latestReceipt && (
-        <ReceiptView receipt={latestReceipt} authToken={authToken} currentUser={currentUser} />
-      )}
+          <div className="topbar-right">
+            <div className="live-sync-pill">
+              <span className="live-pulse"></span>
+              <span>PostgreSQL RLS Active</span>
+            </div>
 
-      <footer className="footer">
-        ExpensEase &bull; Responsive Progressive Web Application &bull; Checkpoint 8 (Journal Entries / Deterministic Accounting)
-      </footer>
+            {currentUser && currentUser.role === 'EMPLOYEE' && (
+              <button
+                type="button"
+                className="btn btn-gold"
+                onClick={() => setActiveNav('upload')}
+              >
+                + Submit Expense
+              </button>
+            )}
+
+            {/* Role indicator or switcher for reviewers */}
+            {currentUser && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span className="status-pill draft" style={{ fontSize: '0.75rem' }}>
+                  {currentUser.role}
+                </span>
+              </div>
+            )}
+          </div>
+        </header>
+
+        {/* Workspace Body */}
+        <main className="workspace-scroll">
+          {/* Sign In Screen if unauthenticated */}
+          {!currentUser ? (
+            <div style={{ maxWidth: '480px', margin: '40px auto', width: '100%' }}>
+              <div className="table-card" style={{ padding: '32px' }}>
+                <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+                  <div className="brand-badge" style={{ margin: '0 auto 12px auto', width: '48px', height: '48px', fontSize: '1.5rem' }}>
+                    E
+                  </div>
+                  <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Sign in to ExpensEase
+                  </h2>
+                  <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Smart Employee Expense Management Platform
+                  </p>
+                </div>
+
+                {/* Quick Role Fill Presets for Review / Evaluation */}
+                <div style={{ marginBottom: '20px', padding: '12px', background: '#f8fafc', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                    1-Click Evaluation Presets:
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => handleQuickLogin('EMPLOYEE')}
+                      disabled={loginLoading}
+                    >
+                      Employee
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => handleQuickLogin('MANAGER')}
+                      disabled={loginLoading}
+                    >
+                      Manager
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => handleQuickLogin('FINANCE')}
+                      disabled={loginLoading}
+                    >
+                      Finance
+                    </button>
+                  </div>
+                </div>
+
+                {loginError && (
+                  <div className="alert alert-danger" style={{ marginBottom: '16px' }}>
+                    {loginError}
+                  </div>
+                )}
+
+                <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div className="form-group">
+                    <label className="form-label">Tenant Slug</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={slug}
+                      onChange={(e) => setSlug(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Email Address</label>
+                    <input
+                      type="email"
+                      className="form-input"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Password</label>
+                    <input
+                      type="password"
+                      className="form-input"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="btn btn-gold btn-lg"
+                    disabled={loginLoading}
+                    style={{ marginTop: '8px', width: '100%' }}
+                  >
+                    {loginLoading ? 'Signing In...' : 'Sign In to Workspace'}
+                  </button>
+                </form>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* VIEW 1: DASHBOARD (Stitch Screen 1: Employee Receipt Submission) */}
+              {activeNav === 'dashboard' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                  {/* Summary Metric Cards */}
+                  <div className="stats-grid">
+                    <div className="stat-card">
+                      <div className="stat-header">
+                        <span className="stat-title">Total Submitted</span>
+                        <span className="stat-icon">📄</span>
+                      </div>
+                      <div className="stat-body">
+                        <div className="stat-value">{totalSubmittedCount} claims</div>
+                        <span className="stat-subtext status-pill approved">In System</span>
+                      </div>
+                    </div>
+
+                    <div className="stat-card">
+                      <div className="stat-header">
+                        <span className="stat-title">Pending Approval</span>
+                        <span className="stat-icon">⏳</span>
+                      </div>
+                      <div className="stat-body">
+                        <div className="stat-value">{pendingCount} claims</div>
+                        <span className="stat-subtext status-pill pending">Awaiting Review</span>
+                      </div>
+                    </div>
+
+                    <div className="stat-card">
+                      <div className="stat-header">
+                        <span className="stat-title">Approved &amp; Settled</span>
+                        <span className="stat-icon">✅</span>
+                      </div>
+                      <div className="stat-body">
+                        <div className="stat-value">{approvedCount} claims</div>
+                        <span className="stat-subtext status-pill approved">Cleared</span>
+                      </div>
+                    </div>
+
+                    <div className="stat-card">
+                      <div className="stat-header">
+                        <span className="stat-title">Tenant Organization</span>
+                        <span className="stat-icon">🏢</span>
+                      </div>
+                      <div className="stat-body">
+                        <div className="stat-value" style={{ fontSize: '1.25rem' }}>{slug}</div>
+                        <span className="stat-subtext status-pill policy-pass">RLS Enforced</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Ingestion Action Cards (Stitch Screen 1 Middle Row) */}
+                  <div className="action-cards-grid">
+                    <div className="action-card" onClick={() => setActiveNav('upload')}>
+                      <div className="action-card-icon">📤</div>
+                      <div>
+                        <h4 className="action-card-title">Upload Receipt Image</h4>
+                        <p className="action-card-desc">
+                          Select JPEG, PNG, or WebP receipts. Automatic OCR and AI field extraction runs upon upload.
+                        </p>
+                      </div>
+                      <button type="button" className="btn btn-gold btn-sm" style={{ marginTop: 'auto' }}>
+                        Browse &amp; Upload
+                      </button>
+                    </div>
+
+                    <div className="action-card" onClick={() => setActiveNav('upload')}>
+                      <div className="action-card-icon">📷</div>
+                      <div>
+                        <h4 className="action-card-title">Snap with Camera</h4>
+                        <p className="action-card-desc">
+                          Trigger mobile or web camera capture with auto-edge alignment and OCR text extraction.
+                        </p>
+                      </div>
+                      <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 'auto' }}>
+                        Open Camera
+                      </button>
+                    </div>
+
+                    <div className="action-card" onClick={() => setActiveNav('receipt-detail')}>
+                      <div className="action-card-icon">🔍</div>
+                      <div>
+                        <h4 className="action-card-title">Check Submission Status</h4>
+                        <p className="action-card-desc">
+                          Inspect AI extraction confidence, deterministic policy validation results, and manager feedback.
+                        </p>
+                      </div>
+                      <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 'auto' }}>
+                        Track Claims
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Recent Submissions Ledger Table */}
+                  <div className="table-card">
+                    <div className="table-header-bar">
+                      <span className="table-title">Recent Submissions Ledger</span>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => fetchReceipts(authToken)}
+                        disabled={loadingReceipts}
+                      >
+                        {loadingReceipts ? 'Refreshing...' : '🔄 Refresh Ledger'}
+                      </button>
+                    </div>
+
+                    {filteredReceipts.length === 0 ? (
+                      <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        No expense receipts found. Click <strong>"Submit Expense"</strong> to upload your first receipt.
+                      </div>
+                    ) : (
+                      <div className="data-table-wrapper">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th>Receipt / Voucher</th>
+                              <th>Format / Size</th>
+                              <th>OCR Status</th>
+                              <th>Workflow State</th>
+                              <th style={{ textAlign: 'right' }}>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredReceipts.map((r) => {
+                              const st = r.workflow_state || r.workflowState || 'DRAFT';
+                              return (
+                                <tr key={r.id}>
+                                  <td style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                    {new Date(r.created_at || r.createdAt).toLocaleDateString()}
+                                  </td>
+                                  <td style={{ fontWeight: 600 }}>
+                                    {r.original_filename || r.originalFilename || 'Receipt Image'}
+                                  </td>
+                                  <td>
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                      {r.mime_type || r.mimeType || 'image'} &bull; {((r.file_size_bytes || r.fileSizeBytes || 0) / 1024).toFixed(1)} KB
+                                    </span>
+                                  </td>
+                                  <td>
+                                    <span className={`status-pill ${r.ocr_status === 'COMPLETED' ? 'policy-pass' : 'draft'}`}>
+                                      <span className="status-dot"></span>
+                                      <span>{r.ocr_status || r.ocrStatus}</span>
+                                    </span>
+                                  </td>
+                                  <td>
+                                    <span className={`status-pill ${st === 'APPROVED' ? 'approved' : st === 'PENDING_APPROVAL' ? 'pending' : st === 'REJECTED' ? 'rejected' : 'draft'}`}>
+                                      <span className="status-dot"></span>
+                                      <span>{st.replace('_', ' ')}</span>
+                                    </span>
+                                  </td>
+                                  <td style={{ textAlign: 'right' }}>
+                                    <button
+                                      type="button"
+                                      className="btn btn-outline btn-sm"
+                                      onClick={() => {
+                                        setLatestReceipt(r);
+                                        setActiveNav('receipt-detail');
+                                      }}
+                                    >
+                                      Inspect &rarr;
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* VIEW 2: UPLOAD RECEIPT */}
+              {activeNav === 'upload' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <ReceiptCapture
+                    authToken={authToken}
+                    onReceiptUploaded={(uploadedReceipt) => {
+                      setLatestReceipt(uploadedReceipt);
+                      fetchReceipts(authToken);
+                      setActiveNav('receipt-detail');
+                    }}
+                  />
+                </div>
+              )}
+
+              {/* VIEW 3: RECEIPT OCR & SPLIT INSPECTOR (Stitch Screen 2) */}
+              {activeNav === 'receipt-detail' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {receiptsList.length > 0 && (
+                    <div className="table-card" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                      <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                        Select Active Voucher:
+                      </span>
+                      <select
+                        className="form-select"
+                        style={{ width: 'auto', minWidth: '280px' }}
+                        value={latestReceipt?.id || ''}
+                        onChange={(e) => {
+                          const found = receiptsList.find((r) => r.id === e.target.value);
+                          if (found) setLatestReceipt(found);
+                        }}
+                      >
+                        {receiptsList.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.original_filename || r.originalFilename || 'Receipt'} &bull; ID: {r.id.slice(0, 8)}... ({r.workflow_state || r.workflowState || 'DRAFT'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {latestReceipt ? (
+                    <ReceiptView
+                      receipt={latestReceipt}
+                      authToken={authToken}
+                      currentUser={currentUser}
+                      onWorkflowUpdated={() => fetchReceipts(authToken)}
+                    />
+                  ) : (
+                    <div className="table-card" style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      No receipt selected. Upload or choose a receipt from the ledger.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* VIEW 4: MANAGER APPROVALS (Stitch Screen 3) */}
+              {activeNav === 'approvals' && (
+                <ManagerApprovalsView
+                  authToken={authToken}
+                  currentUser={currentUser}
+                  onSelectReceipt={(r) => setLatestReceipt(r)}
+                />
+              )}
+
+              {/* VIEW 5: FINANCE OPERATIONS (Stitch Screen 4) */}
+              {activeNav === 'finance' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <FinanceBatchView
+                    authToken={authToken}
+                    currentUser={currentUser}
+                  />
+
+                  <div style={{ marginTop: '12px' }}>
+                    <JournalEntryView
+                      authToken={authToken}
+                      currentUser={currentUser}
+                    />
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
