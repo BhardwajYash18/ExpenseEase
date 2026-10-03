@@ -31,4 +31,12 @@ router.delete('/:id/items/:receiptId', financeBatchController.removeExpenseFromB
 // POST /api/finance-batches/:id/review - Complete finance review on a batch
 router.post('/:id/review', financeBatchController.reviewBatch);
 
+// Journal Entry integration points for Finance Batches (PRD FR-10.1, AGENTS.md Sec 14, 15)
+const journalEntryController = require('../controllers/journalEntryController');
+// POST /api/finance-batches/:batchId/journal-entry - Generate journal entry from reviewed batch
+router.post('/:batchId/journal-entry', journalEntryController.generateJournalEntry);
+// GET /api/finance-batches/:batchId/journal-entry - Retrieve journal entry for batch
+router.get('/:batchId/journal-entry', journalEntryController.getJournalEntryByBatch);
+
 module.exports = router;
+

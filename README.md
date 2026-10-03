@@ -226,6 +226,43 @@ ExpensEase utilizes a **four-service application architecture**:
   - "Complete Finance Review" action for `OPEN` batches.
   - Chronological audit trail timeline displaying actor, role, action, and timestamp.
 
+### Checkpoint 8 — Journal Entries / Deterministic Accounting
+- [x] Applied deterministic SQL migration `008_create_journal_entries.sql`:
+  - `account_mappings` table (`id` UUID PK, `tenant_id` FK, `category VARCHAR(64)`, `debit_account VARCHAR(128)`, `credit_account VARCHAR(128)`, `CONSTRAINT uq_tenant_category UNIQUE (tenant_id, category)`, timestamps).
+  - `journal_entries` table (`id` UUID PK, `tenant_id` FK, `batch_id` FK, `created_by` FK, `status VARCHAR(32)` with strict `CHECK (status IN ('DRAFT', 'FINALIZED'))`, `total_debit NUMERIC(12, 2)`, `total_credit NUMERIC(12, 2)`, `line_count INTEGER`, `finalized_by` FK, `finalized_at`, `CONSTRAINT uq_batch_journal_entry UNIQUE (batch_id)`, timestamps).
+  - `journal_entry_lines` table (`id` UUID PK, `journal_entry_id` FK, `tenant_id` FK, `receipt_id` FK, `line_order INTEGER`, `account VARCHAR(128)`, `debit_amount NUMERIC(12, 2)`, `credit_amount NUMERIC(12, 2)`, `description TEXT`, `created_at`).
+  - `journal_entry_actions` table for append-only audit trail (`id` UUID PK, `journal_entry_id` FK, `tenant_id` FK, `actor_id` FK, `actor_role`, `action` with strict `CHECK (action IN ('GENERATE', 'FINALIZE'))`, `details TEXT`, `created_at`).
+  - Forced PostgreSQL RLS with `tenant_isolation_policy` on all four tables using `app.current_tenant_id`.
+  - Least-privilege permissions granted to `expensease_app`: CRUD on `account_mappings`, `journal_entries`, and `journal_entry_lines`; append-only `SELECT, INSERT` on `journal_entry_actions`.
+- [x] Implemented robust Account Mapping & Journal Entry services (`backend/src/services/`):
+  - Deterministic account mapping: `Expense Category → Configured Account Mapping → Accounting Account → Journal Entry Line` (AGENTS.md Sec 15; PRD FR-10.2).
+  - Zero AI decision-making: LLM does not invent accounting accounts or decide debit/credit balances (AGENTS.md Sec 7, 15; PRD FR-10.3).
+  - Missing account mappings produce explicit errors, halting generation until configured (AGENTS.md Sec 15; PRD FR-10.6).
+  - Strict double-entry balance validation: `TOTAL DEBITS = TOTAL CREDITS` (AGENTS.md Sec 15; PRD FR-10.4). Unbalanced journal entries cannot be finalized (PRD FR-10.5).
+  - Deterministic arithmetic: Integer cents summation using `decimalUtils.parseToCents` with zero floating-point math (AGENTS.md Sec 16; PRD Sec 12.3).
+  - Source integrity: Generated exclusively from Finance Batches that have completed Finance Review (`status = 'REVIEWED'`) (AGENTS.md Sec 6, 14, 28; PRD FR-10.1).
+  - Journal entry lifecycle: `DRAFT` (reviewable prior to finalization) and `FINALIZED` (finalized by Finance). These literals are implementation representations of the review/finalization progression.
+  - Duplicate generation prevention: Enforces `UNIQUE(batch_id)` on `journal_entries` to prevent double-counting.
+  - Audit logging: Append-only audit entries in `journal_entry_actions` for `GENERATE` and `FINALIZE`.
+- [x] Mounted Journal Entry & Account Mapping API routes (`backend/src/routes/`):
+  - `GET /api/account-mappings`
+  - `POST /api/account-mappings`
+  - `GET /api/journal-entries`
+  - `POST /api/journal-entries/generate`
+  - `GET /api/journal-entries/:id`
+  - `POST /api/journal-entries/:id/finalize`
+  - `POST /api/finance-batches/:batchId/journal-entry`
+  - `GET /api/finance-batches/:batchId/journal-entry`
+  - Strict server-side RBAC: restricted exclusively to `FINANCE` role (`EMPLOYEE` and `MANAGER` receive 403 Forbidden).
+- [x] Enhanced React PWA interface (`JournalEntryView.jsx`, `FinanceBatchView.jsx`, `App.jsx`):
+  - Finance workspace tab switcher: "Finance Batches" & "Journal Entries & Accounting".
+  - Journal Entries list displaying ID, Batch ID, status badge, total debit, total credit, and balance status.
+  - Journal Entry details inspector with double-entry balance card, ordered lines table (#, Account, Description, Debit, Credit), and action bar.
+  - "Finalize Journal Entry" action for `DRAFT` entries with balance validation.
+  - Account Mappings configuration manager allowing Finance users to view and add/update category-to-GL account mappings.
+  - "Generate Journal Entry" one-click action directly on `REVIEWED` Finance Batches.
+
+
 
 ---
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ReceiptCapture from './components/ReceiptCapture';
 import ReceiptView from './components/ReceiptView';
 import FinanceBatchView from './components/FinanceBatchView';
+import JournalEntryView from './components/JournalEntryView';
 
 function App() {
   const [backendHealth, setBackendHealth] = useState('checking');
@@ -11,6 +12,8 @@ function App() {
   const [latestReceipt, setLatestReceipt] = useState(null);
   const [receiptsList, setReceiptsList] = useState([]);
   const [loadingReceipts, setLoadingReceipts] = useState(false);
+  const [financeView, setFinanceView] = useState('batches'); // 'batches' or 'accounting'
+
 
   // Form states for login testing
   const [email, setEmail] = useState('employee@acme.test');
@@ -115,7 +118,7 @@ function App() {
       <div className="card" style={{ marginBottom: '20px' }}>
         <div className="status-badge ok">
           <span className="status-indicator"></span>
-          <span>Checkpoint 7 — Finance Batches</span>
+          <span>Checkpoint 8 — Journal Entries / Deterministic Accounting</span>
         </div>
 
         <ul className="info-list">
@@ -148,7 +151,7 @@ function App() {
 
           <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Company Slug</label>
+              <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Tenant Slug</label>
               <input
                 type="text"
                 value={slug}
@@ -194,9 +197,34 @@ function App() {
         </div>
       )}
 
-      {/* Finance Batches Management Section (FINANCE role per AGENTS.md Section 13/14) */}
+      {/* Finance Operations Workspace (FINANCE role per AGENTS.md Section 13/14/15) */}
       {currentUser && currentUser.role === 'FINANCE' && (
-        <FinanceBatchView authToken={authToken} currentUser={currentUser} />
+        <div style={{ marginBottom: '20px' }}>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+            <button
+              type="button"
+              className={`btn ${financeView === 'batches' ? 'btn-primary' : 'btn-outline'}`}
+              onClick={() => setFinanceView('batches')}
+              style={{ flex: 1, padding: '10px 16px', fontSize: '0.9rem' }}
+            >
+              Finance Batches (Checkpoint 7)
+            </button>
+            <button
+              type="button"
+              className={`btn ${financeView === 'accounting' ? 'btn-primary' : 'btn-outline'}`}
+              onClick={() => setFinanceView('accounting')}
+              style={{ flex: 1, padding: '10px 16px', fontSize: '0.9rem' }}
+            >
+              Journal Entries &amp; Accounting (Checkpoint 8)
+            </button>
+          </div>
+
+          {financeView === 'batches' ? (
+            <FinanceBatchView authToken={authToken} currentUser={currentUser} />
+          ) : (
+            <JournalEntryView authToken={authToken} currentUser={currentUser} />
+          )}
+        </div>
       )}
 
       {/* Receipt Capture Component (EMPLOYEE only per AGENTS.md RBAC) */}
@@ -264,7 +292,7 @@ function App() {
       )}
 
       <footer className="footer">
-        ExpensEase &bull; Responsive Progressive Web Application &bull; Checkpoint 7 (Finance Batches)
+        ExpensEase &bull; Responsive Progressive Web Application &bull; Checkpoint 8 (Journal Entries / Deterministic Accounting)
       </footer>
     </div>
   );

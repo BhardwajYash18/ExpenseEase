@@ -35,6 +35,10 @@ function FinanceBatchView({ authToken, currentUser }) {
   const [selectedAddReceiptId, setSelectedAddReceiptId] = useState('');
   const [addingItem, setAddingItem] = useState(false);
 
+  // Checkpoint 8 Journal Entry state
+  const [batchJournalEntry, setBatchJournalEntry] = useState(null);
+  const [generatingJournal, setGeneratingJournal] = useState(false);
+
   // Fetch batches list
   async function fetchBatches() {
     if (!authToken) return;
@@ -71,6 +75,7 @@ function FinanceBatchView({ authToken, currentUser }) {
   async function fetchBatchDetail(batchId) {
     if (!authToken || !batchId) return;
     setLoading(true);
+    setBatchJournalEntry(null);
     try {
       const res = await fetch(`/api/finance-batches/${batchId}`, {
         headers: { Authorization: `Bearer ${authToken}` },
@@ -79,6 +84,19 @@ function FinanceBatchView({ authToken, currentUser }) {
         const data = await res.json();
         setSelectedBatch(data.batch);
         setActiveTab('detail');
+
+        // Check if journal entry exists for this batch
+        try {
+          const jeRes = await fetch(`/api/finance-batches/${batchId}/journal-entry`, {
+            headers: { Authorization: `Bearer ${authToken}` },
+          });
+          if (jeRes.ok) {
+            const jeData = await jeRes.json();
+            setBatchJournalEntry(jeData.journalEntry);
+          }
+        } catch {
+          // No journal entry yet
+        }
       } else {
         const data = await res.json();
         setError(data.error?.message || 'Failed to load batch');
@@ -89,6 +107,34 @@ function FinanceBatchView({ authToken, currentUser }) {
       setLoading(false);
     }
   }
+
+  // Handle generating journal entry from reviewed batch
+  async function handleGenerateJournalEntry() {
+    if (!authToken || !selectedBatch) return;
+    setGeneratingJournal(true);
+    setError(null);
+    setSuccessMsg(null);
+
+    try {
+      const res = await fetch(`/api/finance-batches/${selectedBatch.id}/journal-entry`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error?.message || 'Failed to generate journal entry');
+      }
+
+      setBatchJournalEntry(data.journalEntry);
+      setSuccessMsg('Journal entry successfully generated from Finance Batch.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setGeneratingJournal(false);
+    }
+  }
+
 
   useEffect(() => {
     fetchBatches();
@@ -561,10 +607,52 @@ function FinanceBatchView({ authToken, currentUser }) {
           )}
 
           {selectedBatch.status === 'REVIEWED' && (
-            <div className="alert alert-info" style={{ marginBottom: '16px' }}>
-              &bull; <strong>Finance Review Completed:</strong> Reviewed by {selectedBatch.reviewedBy?.name} on {new Date(selectedBatch.reviewedAt).toLocaleString()}. Batch is locked from further item additions/removals and ready for Checkpoint 8 Journal Entry generation.
+            <div
+              style={{
+                background: 'rgba(59, 130, 246, 0.1)',
+                border: '1px solid rgba(59, 130, 246, 0.3)',
+                padding: '16px',
+                borderRadius: '8px',
+                marginBottom: '16px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '12px',
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#93c5fd', marginBottom: '4px' }}>
+                  &bull; Finance Review Completed
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  Reviewed by {selectedBatch.reviewedBy?.name} on {new Date(selectedBatch.reviewedAt).toLocaleString()}.
+                  {batchJournalEntry ? (
+                    <span style={{ display: 'block', marginTop: '4px', color: '#10b981', fontWeight: 600 }}>
+                      &check; Journal Entry Generated: {batchJournalEntry.id.slice(0, 8)}... (Status: {batchJournalEntry.status}, Total: ${batchJournalEntry.totalDebit.toFixed(2)})
+                    </span>
+                  ) : (
+                    <span style={{ display: 'block', marginTop: '4px', color: 'var(--text-muted)' }}>
+                      Ready for Checkpoint 8 double-entry Journal Entry generation.
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {!batchJournalEntry && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ fontSize: '0.8rem', padding: '8px 16px' }}
+                  onClick={handleGenerateJournalEntry}
+                  disabled={generatingJournal}
+                >
+                  {generatingJournal ? 'Generating...' : 'Generate Journal Entry (CP8) \u2192'}
+                </button>
+              )}
             </div>
           )}
+
 
           {/* Included Expenses Table */}
           <h4 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '8px' }}>
