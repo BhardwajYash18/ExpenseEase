@@ -4,6 +4,7 @@ import ReceiptView from './components/ReceiptView';
 import ManagerApprovalsView from './components/ManagerApprovalsView';
 import FinanceBatchView from './components/FinanceBatchView';
 import JournalEntryView from './components/JournalEntryView';
+import { IS_DEMO_MODE, DEMO_ACCOUNTS } from './config/demoConfig';
 
 function App() {
   const [backendHealth, setBackendHealth] = useState('checking');
@@ -26,10 +27,10 @@ function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Login form states (default to development demo credentials)
-  const [email, setEmail] = useState('employee@demo.com');
-  const [password, setPassword] = useState('employee123');
-  const [slug, setSlug] = useState('demo');
+  // Login form states (isolated to demo configuration in development mode)
+  const [email, setEmail] = useState(IS_DEMO_MODE ? DEMO_ACCOUNTS.EMPLOYEE.email : '');
+  const [password, setPassword] = useState(IS_DEMO_MODE ? DEMO_ACCOUNTS.EMPLOYEE.password : '');
+  const [slug, setSlug] = useState(IS_DEMO_MODE ? DEMO_ACCOUNTS.EMPLOYEE.slug : '');
   const [loginError, setLoginError] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
 
@@ -149,23 +150,14 @@ function App() {
     setActiveNav('dashboard');
   };
 
-  // Helper quick login for reviewers / testers using development demo accounts
+  // Helper quick login for reviewers / testers using isolated demo accounts
   const handleQuickLogin = (roleType) => {
-    let emailToUse = 'employee@demo.com';
-    let pwdToUse = 'employee123';
-    if (roleType === 'MANAGER') {
-      emailToUse = 'manager@demo.com';
-      pwdToUse = 'manager123';
-    }
-    if (roleType === 'FINANCE') {
-      emailToUse = 'finance@demo.com';
-      pwdToUse = 'finance123';
-    }
-
+    if (!IS_DEMO_MODE || !DEMO_ACCOUNTS[roleType]) return;
+    const { email: emailToUse, password: pwdToUse, slug: slugToUse } = DEMO_ACCOUNTS[roleType];
     setEmail(emailToUse);
     setPassword(pwdToUse);
-    setSlug('demo');
-    handleLogin(null, { email: emailToUse, password: pwdToUse, slug: 'demo' });
+    setSlug(slugToUse);
+    handleLogin(null, { email: emailToUse, password: pwdToUse, slug: slugToUse });
   };
 
   // Calculate real dashboard statistics from receiptsList
@@ -394,38 +386,40 @@ function App() {
                   </p>
                 </div>
 
-                {/* Quick Role Fill Presets for Review / Evaluation */}
-                <div style={{ marginBottom: '20px', padding: '12px', background: '#f8fafc', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                    1-Click Evaluation Presets:
+                {/* Quick Role Fill Presets for Review / Evaluation (Isolated to Development Mode) */}
+                {IS_DEMO_MODE && (
+                  <div style={{ marginBottom: '20px', padding: '12px', background: '#f8fafc', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                      1-Click Demo Evaluation Presets (Dev Only):
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => handleQuickLogin('EMPLOYEE')}
+                        disabled={loginLoading}
+                      >
+                        Employee
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => handleQuickLogin('MANAGER')}
+                        disabled={loginLoading}
+                      >
+                        Manager
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => handleQuickLogin('FINANCE')}
+                        disabled={loginLoading}
+                      >
+                        Finance
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
-                    <button
-                      type="button"
-                      className="btn btn-outline btn-sm"
-                      onClick={() => handleQuickLogin('EMPLOYEE')}
-                      disabled={loginLoading}
-                    >
-                      Employee
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-outline btn-sm"
-                      onClick={() => handleQuickLogin('MANAGER')}
-                      disabled={loginLoading}
-                    >
-                      Manager
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-outline btn-sm"
-                      onClick={() => handleQuickLogin('FINANCE')}
-                      disabled={loginLoading}
-                    >
-                      Finance
-                    </button>
-                  </div>
-                </div>
+                )}
 
                 {loginError && (
                   <div className="alert alert-danger" style={{ marginBottom: '16px' }}>

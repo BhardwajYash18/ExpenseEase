@@ -15,36 +15,7 @@ dotenv.config({ path: path.join(__dirname, '../../.env') });
 
 const { pool, withTransaction, withTenantContext } = require('../../backend/src/config/db');
 const { hashPassword } = require('../../backend/src/services/authService');
-
-const DEMO_TENANT = {
-  name: 'ExpensEase Demo',
-  slug: 'demo',
-  status: 'ACTIVE',
-};
-
-const DEMO_USERS = [
-  {
-    email: 'employee@demo.com',
-    password: 'employee123',
-    role: 'EMPLOYEE',
-    firstName: 'Demo',
-    lastName: 'Employee',
-  },
-  {
-    email: 'manager@demo.com',
-    password: 'manager123',
-    role: 'MANAGER',
-    firstName: 'Demo',
-    lastName: 'Manager',
-  },
-  {
-    email: 'finance@demo.com',
-    password: 'finance123',
-    role: 'FINANCE',
-    firstName: 'Demo',
-    lastName: 'Finance',
-  },
-];
+const { DEMO_TENANT, DEMO_USERS } = require('./demoConfig');
 
 /**
  * Idempotently seed the dedicated development/demo tenant and its 3 users.

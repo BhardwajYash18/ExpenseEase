@@ -37,11 +37,23 @@ coverage/
 *.lcov
 .nyc_output
 
-# Environment files
+# Environment files & Credentials/Secrets
 .env
+.env.*
 .env.local
 .env.*.local
 !.env.example
+!**/.env.example
+*.pem
+*.key
+*.cert
+*.crt
+*.pfx
+*.p12
+credentials.json
+service-account*.json
+client_secret*.json
+secrets/
 
 # IDE & Editor
 .vscode/
@@ -49,8 +61,20 @@ coverage/
 *.swp
 *.swo
 *~
+*.bak
+*.tmp
+tmp/
+temp/
+
+# OS-generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+Desktop.ini
 
 # Logs
 logs/

@@ -304,6 +304,8 @@ cp backend/.env.example backend/.env
 cp ai-service/.env.example ai-service/.env
 ```
 
+After copying, open `backend/.env` and generate a cryptographically strong, random secret for `JWT_SECRET` (e.g. `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`). In production, `DB_PASSWORD` and `JWT_SECRET` are strictly required and have no fallback defaults.
+
 ### Key Environment Variables
 
 #### Backend (`backend/.env`)
@@ -314,8 +316,8 @@ cp ai-service/.env.example ai-service/.env
 | `DB_HOST` | Yes | `localhost` | PostgreSQL host. |
 | `DB_PORT` | Yes | `5432` | PostgreSQL port. |
 | `DB_NAME` | Yes | `expensease_db` | PostgreSQL database name. |
-| `DB_USER` | Yes | `expensease_user` | PostgreSQL superuser/admin user for migrations. |
-| `DB_PASSWORD` | Yes | `expensease_secure_password` | PostgreSQL password. |
+| `DB_USER` | Yes | `expensease_user` | PostgreSQL database user. |
+| `DB_PASSWORD` | **Required in Prod** | *Dev-only fallback* | PostgreSQL password. Must be supplied via environment in production. |
 | `JWT_SECRET` | **YES** | *None* | Cryptographically secure secret for signing HS256 JWTs. |
 | `JWT_EXPIRES_IN` | No | `24h` | JWT validity duration. |
 | `AI_SERVICE_URL` | Yes | `http://localhost:8000` | Base URL of the Python FastAPI service. |
@@ -330,6 +332,28 @@ cp ai-service/.env.example ai-service/.env
 | `AI_PROVIDER` | No | `mock` | Extraction provider: `mock` (deterministic regex/heuristic) or `llm`. |
 | `AI_API_KEY` | Optional | `""` | API key required only when `AI_PROVIDER=llm`. |
 | `AI_MODEL` | No | `gpt-4o-mini` | Model identifier when `AI_PROVIDER=llm`. |
+
+---
+
+## Local Development Demo Accounts
+
+> [!WARNING]
+> **DEMO / LOCAL DEVELOPMENT ONLY — NEVER REUSE IN PRODUCTION**
+> The accounts below are provided exclusively for local testing, evaluation, and verifying the role-based workflows (Employee, Manager, and Finance). They are seeded into the database using `npm run seed:demo` in the `backend/` directory.
+
+| Role | Tenant Slug | Email | Password | Permitted Actions |
+|---|---|---|---|---|
+| **Employee** | `demo` | `employee@expenseease.local` | `employee123` | Receipt capture, field confirmation, expense submission, personal list view |
+| **Manager** | `demo` | `manager@expenseease.local` | `manager123` | Approval queue review, approve/reject/request correction with audit trail |
+| **Finance** | `demo` | `finance@expenseease.local` | `finance123` | Finance Batch creation/review, Journal Entry generation/finalization, CSV export |
+
+*(Note: Legacy alias accounts with `@demo.com` domains are also seeded for backward compatibility).*
+
+To populate these accounts into your local PostgreSQL database:
+```bash
+cd backend
+npm run seed:demo
+```
 
 ---
 

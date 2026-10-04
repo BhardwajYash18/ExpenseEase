@@ -21,12 +21,22 @@ try {
 dotenv.config({ path: path.join(__dirname, '../backend/.env') });
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
+const isProduction = (process.env.NODE_ENV || 'development') === 'production';
+
+// In production, DB_PASSWORD must be explicitly provided via environment configuration
+if (isProduction && (!process.env.DB_PASSWORD || process.env.DB_PASSWORD.trim() === '')) {
+  throw new Error('[Migration] FATAL: DB_PASSWORD environment variable is required in production.');
+}
+
+// Development-only fallback password strictly isolated for local development/testing
+const DEV_ONLY_DB_PASSWORD = 'expensease_secure_password';
+
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '5432', 10),
   database: process.env.DB_NAME || 'expensease_db',
   user: process.env.DB_USER || 'expensease_user',
-  password: process.env.DB_PASSWORD || 'expensease_secure_password',
+  password: process.env.DB_PASSWORD || (isProduction ? '' : DEV_ONLY_DB_PASSWORD),
   ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
 };
 

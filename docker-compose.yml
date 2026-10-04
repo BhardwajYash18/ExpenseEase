@@ -7,6 +7,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-expensease_user}
+      # DEVELOPMENT ONLY: Default password for local development containers. Never use in production.
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-expensease_secure_password}
       POSTGRES_DB: ${POSTGRES_DB:-expensease_db}
     ports:
@@ -33,6 +34,7 @@ services:
       DB_PORT: 5432
       DB_NAME: ${POSTGRES_DB:-expensease_db}
       DB_USER: ${POSTGRES_USER:-expensease_user}
+      # DEVELOPMENT ONLY: Default password for local development containers. Must be supplied via .env in production.
       DB_PASSWORD: ${POSTGRES_PASSWORD:-expensease_secure_password}
       AI_SERVICE_URL: http://ai-service:8000
       JWT_SECRET: ${JWT_SECRET:-}

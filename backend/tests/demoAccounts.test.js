@@ -25,7 +25,7 @@ describe('Development Test Accounts & RBAC Verification', () => {
       const secondSeed = await seedDemo(pool);
       expect(secondSeed.tenant.slug).toBe(DEMO_TENANT.slug);
       expect(secondSeed.tenant.id).toBe(demoTenantId);
-      expect(secondSeed.users).toHaveLength(3);
+      expect(secondSeed.users).toHaveLength(DEMO_USERS.length);
     });
 
     it('confirms all demo users share the exact same demo tenant_id', async () => {
@@ -33,7 +33,7 @@ describe('Development Test Accounts & RBAC Verification', () => {
         'SELECT id, email, role, tenant_id FROM users WHERE tenant_id = $1',
         [demoTenantId]
       );
-      expect(rows).toHaveLength(3);
+      expect(rows).toHaveLength(DEMO_USERS.length);
       for (const row of rows) {
         expect(row.tenant_id).toBe(demoTenantId);
       }
@@ -41,11 +41,11 @@ describe('Development Test Accounts & RBAC Verification', () => {
   });
 
   describe('2. Authentication Flow for Demo Accounts', () => {
-    it('authenticates EMPLOYEE (employee@demo.com / employee123 / demo)', async () => {
+    it('authenticates EMPLOYEE (employee@expenseease.local / employee123 / demo)', async () => {
       const res = await request(app)
         .post('/api/auth/login')
         .send({
-          email: 'employee@demo.com',
+          email: 'employee@expenseease.local',
           password: 'employee123',
           slug: 'demo',
         });
@@ -53,7 +53,7 @@ describe('Development Test Accounts & RBAC Verification', () => {
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('token');
       expect(res.body.user).toMatchObject({
-        email: 'employee@demo.com',
+        email: 'employee@expenseease.local',
         role: 'EMPLOYEE',
         tenantId: demoTenantId,
       });
@@ -68,11 +68,11 @@ describe('Development Test Accounts & RBAC Verification', () => {
       expect(decoded.role).toBe('EMPLOYEE');
     });
 
-    it('authenticates MANAGER (manager@demo.com / manager123 / demo)', async () => {
+    it('authenticates MANAGER (manager@expenseease.local / manager123 / demo)', async () => {
       const res = await request(app)
         .post('/api/auth/login')
         .send({
-          email: 'manager@demo.com',
+          email: 'manager@expenseease.local',
           password: 'manager123',
           slug: 'demo',
         });
@@ -80,7 +80,7 @@ describe('Development Test Accounts & RBAC Verification', () => {
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('token');
       expect(res.body.user).toMatchObject({
-        email: 'manager@demo.com',
+        email: 'manager@expenseease.local',
         role: 'MANAGER',
         tenantId: demoTenantId,
       });
@@ -95,11 +95,11 @@ describe('Development Test Accounts & RBAC Verification', () => {
       expect(decoded.role).toBe('MANAGER');
     });
 
-    it('authenticates FINANCE (finance@demo.com / finance123 / demo)', async () => {
+    it('authenticates FINANCE (finance@expenseease.local / finance123 / demo)', async () => {
       const res = await request(app)
         .post('/api/auth/login')
         .send({
-          email: 'finance@demo.com',
+          email: 'finance@expenseease.local',
           password: 'finance123',
           slug: 'demo',
         });
@@ -107,7 +107,7 @@ describe('Development Test Accounts & RBAC Verification', () => {
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('token');
       expect(res.body.user).toMatchObject({
-        email: 'finance@demo.com',
+        email: 'finance@expenseease.local',
         role: 'FINANCE',
         tenantId: demoTenantId,
       });
@@ -120,6 +120,25 @@ describe('Development Test Accounts & RBAC Verification', () => {
       expect(decoded.sub).toBe(financeUser.id);
       expect(decoded.tid).toBe(demoTenantId);
       expect(decoded.role).toBe('FINANCE');
+    });
+
+    it('authenticates alias demo accounts (@demo.com) for backward compatibility', async () => {
+      for (const account of [
+        { email: 'employee@demo.com', password: 'employee123', role: 'EMPLOYEE' },
+        { email: 'manager@demo.com', password: 'manager123', role: 'MANAGER' },
+        { email: 'finance@demo.com', password: 'finance123', role: 'FINANCE' },
+      ]) {
+        const res = await request(app)
+          .post('/api/auth/login')
+          .send({
+            email: account.email,
+            password: account.password,
+            slug: 'demo',
+          });
+
+        expect(res.status).toBe(200);
+        expect(res.body.user.role).toBe(account.role);
+      }
     });
 
     it('rejects demo accounts with wrong passwords', async () => {
