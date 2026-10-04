@@ -6,7 +6,7 @@
  */
 
 const DEMO_TENANT = {
-  name: 'ExpensEase Demo',
+  name: 'ExpenseEase Demo',
   slug: 'demo',
   status: 'ACTIVE',
 };

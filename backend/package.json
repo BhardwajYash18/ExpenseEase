@@ -2,7 +2,7 @@
   "name": "expensease-backend",
   "version": "0.1.0",
   "private": true,
-  "description": "ExpensEase Primary Backend Service (Node.js + Express)",
+  "description": "ExpenseEase Primary Backend Service (Node.js + Express)",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

@@ -1,14 +1,14 @@
-# AGENTS.md — ExpensEase Project Instructions
+# AGENTS.md — ExpenseEase Project Instructions
 
 ## 1. PROJECT IDENTITY
 
 Project Name:
 
-EXPENSEASE: SMART EMPLOYEE EXPENSE MANAGEMENT PLATFORM
+EXPENSEEASE: SMART EMPLOYEE EXPENSE MANAGEMENT PLATFORM
 
 The project name MUST NEVER be changed, abbreviated, renamed, or replaced.
 
-ExpensEase is a B2B expense-management platform for small and mid-sized businesses.
+ExpenseEase is a B2B expense-management platform for small and mid-sized businesses.
 
 The current application is a RESPONSIVE PROGRESSIVE WEB APPLICATION (PWA).
 
@@ -22,7 +22,7 @@ The current scope uses a single React-based PWA frontend for desktop and mobile 
 
 The primary sources of truth are:
 
-1. The approved ExpensEase project synopsis.
+1. The approved ExpenseEase project synopsis.
 2. Explicit instructions provided by the project owner.
 3. Existing approved implementation in the repository.
 4. Approved architectural decisions documented in this file.
@@ -47,7 +47,7 @@ Do not silently convert assumptions into requirements.
 
 # 3. CURRENT PROJECT SCOPE
 
-The current ExpensEase scope includes:
+The current ExpenseEase scope includes:
 
 - Responsive PWA frontend
 - Employee expense submission
@@ -454,7 +454,7 @@ Potential duplicates should be available for human review.
 
 # 12. MULTI-TENANCY
 
-ExpensEase is a multi-tenant system.
+ExpenseEase is a multi-tenant system.
 
 Every tenant's data must remain isolated.
 
@@ -960,7 +960,7 @@ Use meaningful commits.
 
 Examples:
 
-chore: initialize ExpensEase project
+chore: initialize ExpenseEase project
 feat: add receipt upload
 feat: implement expense workflow
 feat: add OCR processing
@@ -1303,7 +1303,7 @@ WAIT FOR APPROVAL.
 
 # 30. FINAL PRINCIPLE
 
-ExpensEase must remain:
+ExpenseEase must remain:
 
 SIMPLE
 SECURE

@@ -6,8 +6,8 @@ from app.api.receipt_understanding import router as receipt_understanding_router
 from app.core.config import settings
 
 app = FastAPI(
-    title="ExpensEase AI Service",
-    description="Dedicated AI and document-processing service for ExpensEase",
+    title="ExpenseEase AI Service",
+    description="Dedicated AI and document-processing service for ExpenseEase",
     version="0.1.0",
 )
 

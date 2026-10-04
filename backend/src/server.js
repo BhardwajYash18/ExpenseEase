@@ -3,16 +3,16 @@ const config = require('./config/env');
 const { pool } = require('./config/db');
 
 const server = app.listen(config.port, () => {
-  console.log(`[ExpensEase Backend] Running on port ${config.port} (${config.nodeEnv})`);
+  console.log(`[ExpenseEase Backend] Running on port ${config.port} (${config.nodeEnv})`);
 });
 
 // Graceful shutdown handling
 const handleShutdown = (signal) => {
-  console.log(`[ExpensEase Backend] Received ${signal}. Shutting down gracefully...`);
+  console.log(`[ExpenseEase Backend] Received ${signal}. Shutting down gracefully...`);
   server.close(() => {
-    console.log('[ExpensEase Backend] HTTP server closed.');
+    console.log('[ExpenseEase Backend] HTTP server closed.');
     pool.end(() => {
-      console.log('[ExpensEase Backend] PostgreSQL pool closed.');
+      console.log('[ExpenseEase Backend] PostgreSQL pool closed.');
       process.exit(0);
     });
   });

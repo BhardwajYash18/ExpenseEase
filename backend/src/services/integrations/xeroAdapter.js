@@ -50,14 +50,14 @@ class XeroAdapter extends AccountingIntegrationAdapter {
         LineAmount: Number(amount.toFixed(2)),
         AccountCode: accountCode,
         AccountName: line.account,
-        Description: line.description || `ExpensEase Line ${line.lineOrder || index + 1}`,
+        Description: line.description || `ExpenseEase Line ${line.lineOrder || index + 1}`,
         TaxType: 'NONE',
       };
     });
 
     return {
       ManualJournalID: `XERO-JE-${journalEntry.id.substring(0, 8).toUpperCase()}`,
-      Narration: `ExpensEase Journal Entry ${journalEntry.id} (Batch ${journalEntry.batchId})`,
+      Narration: `ExpenseEase Journal Entry ${journalEntry.id} (Batch ${journalEntry.batchId})`,
       Date: journalDate,
       Status: 'POSTED',
       LineAmountTypes: 'NoTax',

@@ -46,7 +46,7 @@ class QuickBooksAdapter extends AccountingIntegrationAdapter {
 
       return {
         Id: String(line.lineOrder || index + 1),
-        Description: line.description || `ExpensEase Line ${line.lineOrder || index + 1}`,
+        Description: line.description || `ExpenseEase Line ${line.lineOrder || index + 1}`,
         Amount: Number(amount.toFixed(2)),
         DetailType: 'JournalEntryLineDetail',
         JournalEntryLineDetail: {
@@ -63,7 +63,7 @@ class QuickBooksAdapter extends AccountingIntegrationAdapter {
       SyncToken: '1',
       DocNumber: `JE-${journalEntry.id.substring(0, 8).toUpperCase()}`,
       TxnDate: txnDate,
-      PrivateNote: `ExpensEase Journal Entry ${journalEntry.id} from Batch ${journalEntry.batchId}`,
+      PrivateNote: `ExpenseEase Journal Entry ${journalEntry.id} from Batch ${journalEntry.batchId}`,
       TotalAmt: Number(journalEntry.totalDebit.toFixed(2)),
       Line: lines,
     };

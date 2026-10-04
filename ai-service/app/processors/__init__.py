@@ -1,1 +1,1 @@
-# ExpensEase AI Service — Processors package
+# ExpenseEase AI Service — Processors package

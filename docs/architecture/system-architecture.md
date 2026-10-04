@@ -1,11 +1,11 @@
-# ExpensEase — System Architecture
+# ExpenseEase — System Architecture
 
 ## Architecture Overview
 
-ExpensEase is structured as a **four-service application architecture**:
+ExpenseEase is structured as a **four-service application architecture**:
 
 ```
-                    ExpensEase PWA
+                    ExpenseEase PWA
                          │
                          ▼
                   React Frontend
@@ -47,7 +47,7 @@ ExpensEase is structured as a **four-service application architecture**:
 ## Multi-Tenancy & Data Isolation (Checkpoint 1)
 
 ### 1. Tenant/Company Model
-- The **`tenants`** table represents corporate entities (companies) subscribing to ExpensEase.
+- The **`tenants`** table represents corporate entities (companies) subscribing to ExpenseEase.
 - Key attributes include `id` (UUIDv4 primary key), `name` (company display name), `slug` (unique company identifier), and `status` (`ACTIVE`, `SUSPENDED`, `ARCHIVED`).
 - The `tenants` table serves as the root tenant record; administrative provisioning happens via transactions outside the tenant RLS scope.
 
@@ -115,7 +115,7 @@ Client Request (with secure tenant identity)
 ## Authentication & Role-Based Access Control (Checkpoint 2)
 
 ### 1. Password Hashing
-- ExpensEase uses **bcrypt** (`bcryptjs`) with a cost factor of `saltRounds = 12`.
+- ExpenseEase uses **bcrypt** (`bcryptjs`) with a cost factor of `saltRounds = 12`.
 - Every password hash incorporates a cryptographically secure, unique per-hash salt.
 - Plaintext passwords and `password_hash` values are never returned by API endpoints or written to application logs.
 
@@ -131,7 +131,7 @@ Client Request (with secure tenant identity)
 - No user credentials, password hashes, or extraneous PII are placed in the JWT.
 
 ### 3. Pre-Authentication Tenant Lookup Security Rationale
-- **Tenant Isolation Context**: In ExpensEase, user email uniqueness is tenant-scoped (`UNIQUE(tenant_id, email)`). Multiple independent tenants may legitimately employ users with identical emails (e.g. `admin@company.com`).
+- **Tenant Isolation Context**: In ExpenseEase, user email uniqueness is tenant-scoped (`UNIQUE(tenant_id, email)`). Multiple independent tenants may legitimately employ users with identical emails (e.g. `admin@company.com`).
 - **Scoped Pre-Auth Query**: To resolve which tenant space the user belongs to, the login endpoint accepts `{ email, password, slug }`.
 - **Why Pre-Auth Access is Permitted & Safe**:
   - The `tenants` table contains corporate entity metadata (`id`, `name`, `slug`, `status`), not tenant business or expense records.

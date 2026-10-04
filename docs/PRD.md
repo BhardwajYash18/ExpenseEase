@@ -1,12 +1,12 @@
 # Product Requirements Document (PRD)
 
-## EXPENSEASE: SMART EMPLOYEE EXPENSE MANAGEMENT PLATFORM
+## EXPENSEEASE: SMART EMPLOYEE EXPENSE MANAGEMENT PLATFORM
 
 | Field | Value |
 |---|---|
 | **Document Version** | 1.0 |
 | **Date** | September 2026 |
-| **Product Name** | ExpensEase |
+| **Product Name** | ExpenseEase |
 | **Product Type** | Responsive Progressive Web Application (PWA) |
 | **Target Market** | Small and Mid-Sized Businesses (SMBs) |
 | **Delivery Model** | B2B Multi-Tenant SaaS |
@@ -40,7 +40,7 @@
 
 ## 1. Product Vision & Purpose
 
-ExpensEase is a **smart employee expense management platform** designed to eliminate manual, error-prone expense reporting processes for small and mid-sized businesses. The platform streamlines the complete lifecycle of employee expenses — from receipt capture through AI-assisted data extraction to manager approval, finance review, and accounting-ready export.
+ExpenseEase is a **smart employee expense management platform** designed to eliminate manual, error-prone expense reporting processes for small and mid-sized businesses. The platform streamlines the complete lifecycle of employee expenses — from receipt capture through AI-assisted data extraction to manager approval, finance review, and accounting-ready export.
 
 ### Core Value Proposition
 
@@ -63,7 +63,7 @@ Small and mid-sized businesses face significant challenges managing employee exp
 6. **Accounting Friction**: Approved expenses must be manually re-entered into accounting systems.
 7. **Lack of Audit Trail**: Without centralized records, tracking who did what and when is difficult.
 
-ExpensEase addresses each of these by combining OCR-based receipt extraction, AI-assisted understanding, deterministic policy validation, structured approval workflows, and accounting-ready export in a single multi-tenant platform.
+ExpenseEase addresses each of these by combining OCR-based receipt extraction, AI-assisted understanding, deterministic policy validation, structured approval workflows, and accounting-ready export in a single multi-tenant platform.
 
 ---
 
@@ -261,10 +261,10 @@ The following are NOT part of the current MVP and must not be implemented withou
 
 ## 6. System Architecture
 
-ExpensEase uses a **four-service application architecture**:
+ExpenseEase uses a **four-service application architecture**:
 
 ```
-                    ExpensEase PWA
+                    ExpenseEase PWA
                          │
                          ▼
                   React Frontend

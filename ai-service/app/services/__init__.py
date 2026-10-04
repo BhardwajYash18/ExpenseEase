@@ -1,1 +1,1 @@
-# ExpensEase AI Service — Services package
+# ExpenseEase AI Service — Services package

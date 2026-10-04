@@ -9,10 +9,10 @@ if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
     navigator.serviceWorker
       .register('/sw.js')
       .then((registration) => {
-        console.log('[ExpensEase PWA] ServiceWorker registered with scope:', registration.scope);
+        console.log('[ExpenseEase PWA] ServiceWorker registered with scope:', registration.scope);
       })
       .catch((error) => {
-        console.warn('[ExpensEase PWA] ServiceWorker registration failed:', error);
+        console.warn('[ExpenseEase PWA] ServiceWorker registration failed:', error);
       });
   });
 }

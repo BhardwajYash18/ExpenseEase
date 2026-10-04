@@ -1,18 +1,18 @@
-# EXPENSEASE: SMART EMPLOYEE EXPENSE MANAGEMENT PLATFORM
+# EXPENSEEASE: SMART EMPLOYEE EXPENSE MANAGEMENT PLATFORM
 
-ExpensEase is a multi-tenant B2B employee expense management platform designed for small and mid-sized businesses (SMBs). Delivered as a single responsive Progressive Web Application (PWA) backed by a Node.js API orchestrator, a Python document processing service, and a PostgreSQL relational database, ExpensEase automates and governs the complete expense lifecycle from mobile receipt capture through OCR extraction, AI-assisted understanding, deterministic policy validation, manager approvals, finance batching, double-entry bookkeeping, and accounting export.
+ExpenseEase is a multi-tenant B2B employee expense management platform designed for small and mid-sized businesses (SMBs). Delivered as a single responsive Progressive Web Application (PWA) backed by a Node.js API orchestrator, a Python document processing service, and a PostgreSQL relational database, ExpenseEase automates and governs the complete expense lifecycle from mobile receipt capture through OCR extraction, AI-assisted understanding, deterministic policy validation, manager approvals, finance batching, double-entry bookkeeping, and accounting export.
 
 ---
 
 ## Overview
 
-Traditional expense reporting in SMBs is often hindered by lost physical receipts, manual data entry errors, delayed manager approvals, and tedious accounting reconciliation. ExpensEase streamlines this pipeline with assistive intelligence while maintaining strict deterministic financial and architectural controls.
+Traditional expense reporting in SMBs is often hindered by lost physical receipts, manual data entry errors, delayed manager approvals, and tedious accounting reconciliation. ExpenseEase streamlines this pipeline with assistive intelligence while maintaining strict deterministic financial and architectural controls.
 
 ### Core Architectural Principle
 
 > **AI suggests and understands; deterministic code validates; authorized humans approve; accounting logic records.**
 
-Artificial intelligence in ExpensEase is strictly an assistive capability. AI models never approve or reject expenses, never make final policy determinations, never invent accounting accounts, and never mutate financial ledgers. All financial calculations, state transitions, tenant isolation boundaries, and accounting balances are enforced deterministically by the primary backend and database engine.
+Artificial intelligence in ExpenseEase is strictly an assistive capability. AI models never approve or reject expenses, never make final policy determinations, never invent accounting accounts, and never mutate financial ledgers. All financial calculations, state transitions, tenant isolation boundaries, and accounting balances are enforced deterministically by the primary backend and database engine.
 
 ---
 
@@ -64,10 +64,10 @@ Artificial intelligence in ExpensEase is strictly an assistive capability. AI mo
 
 ## System Architecture
 
-ExpensEase employs a modular, four-tier architecture designed for separation of concerns, multi-tenant security, and reproducible deployment:
+ExpenseEase employs a modular, four-tier architecture designed for separation of concerns, multi-tenant security, and reproducible deployment:
 
 ```
-                            ExpensEase PWA
+                            ExpenseEase PWA
                       (React 18 + Vite Frontend)
                                    │
                                    ▼ [REST / JSON]
@@ -153,7 +153,7 @@ ExpensEase employs a modular, four-tier architecture designed for separation of 
 
 ## User Roles
 
-ExpensEase enforces strict server-side Role-Based Access Control (RBAC) across three distinct business roles:
+ExpenseEase enforces strict server-side Role-Based Access Control (RBAC) across three distinct business roles:
 
 | Role | Permitted Actions | Restrictions |
 |---|---|---|
@@ -165,7 +165,7 @@ ExpensEase enforces strict server-side Role-Based Access Control (RBAC) across t
 
 ## AI-Assisted Receipt Processing
 
-ExpensEase incorporates artificial intelligence as an assistive productivity tool rather than an authoritative decision-maker:
+ExpenseEase incorporates artificial intelligence as an assistive productivity tool rather than an authoritative decision-maker:
 
 1. **OCR Text Extraction**: Raw receipt images are preprocessed with OpenCV (grayscale conversion, thresholding, noise filtering) and processed through Tesseract OCR to produce raw text.
 2. **Structured Understanding**: The Python FastAPI service parses OCR text into structured fields using Pydantic models with strict typing (`merchant`, `date`, `amount`, `currency`, `tax_amount`, `category`, `line_items`).
@@ -177,7 +177,7 @@ ExpensEase incorporates artificial intelligence as an assistive productivity too
 
 ## Security & Data Isolation
 
-ExpensEase is engineered to defend against common web application vulnerabilities and multi-tenant data leaks:
+ExpenseEase is engineered to defend against common web application vulnerabilities and multi-tenant data leaks:
 
 - **JWT Authentication**: Algorithm strictly pinned to `HS256` (`{ algorithms: ['HS256'] }`) to defeat algorithm confusion attacks. Server terminates at boot if `JWT_SECRET` is absent (zero default fallback). Expiration and required claims (`sub`, `tid`, `role`) are validated on every request.
 - **Password Security**: Passwords hashed using `bcrypt` (`saltRounds = 12`) with unique salts. Password hashes are excluded from all database projections and API payloads.
@@ -194,7 +194,7 @@ ExpensEase is engineered to defend against common web application vulnerabilitie
 
 ## Accounting & Finance
 
-ExpensEase incorporates deterministic, double-entry bookkeeping principles to ensure accounting integrity:
+ExpenseEase incorporates deterministic, double-entry bookkeeping principles to ensure accounting integrity:
 
 1. **Finance Batches Before Accounting**: Approved expenses are aggregated into Finance Batches for organizational audit and reconciliation prior to journal entry generation.
 2. **Category-to-GL Mapping**: Each expense category maps to an authoritative General Ledger debit account and credit account through tenant-configured mappings in `account_mappings`.
@@ -209,7 +209,7 @@ ExpensEase incorporates deterministic, double-entry bookkeeping principles to en
 
 ## Integrations
 
-ExpensEase provides provider-oriented integration point adapters for external accounting platforms:
+ExpenseEase provides provider-oriented integration point adapters for external accounting platforms:
 
 - **QuickBooks Online Adapter**: Transforms finalized, balanced journal entries into the QuickBooks Online `JournalEntry` entity schema (`DocNumber`, `TxnDate`, `Line` array with `JournalEntryLineDetail`, `PostingType`, and `AccountRef`).
 - **Xero Adapter**: Transforms finalized, balanced journal entries into the Xero `ManualJournals` entity schema (`ManualJournalID`, `Date`, `Status: POSTED`, `JournalLines` array with positive debits and negative credits balancing to zero).
@@ -276,7 +276,7 @@ ExpenseEase/
 
 ## Prerequisites
 
-Before running ExpensEase locally, ensure your development environment has the following tools installed:
+Before running ExpenseEase locally, ensure your development environment has the following tools installed:
 
 - **Node.js**: Version 18.0.0 or higher
 - **npm**: Version 9.0.0 or higher
@@ -431,7 +431,7 @@ For interactive development with Hot Module Replacement (HMR) and live code relo
 
 ## Testing
 
-ExpensEase features comprehensive automated test coverage across all layers of the application.
+ExpenseEase features comprehensive automated test coverage across all layers of the application.
 
 ### 1. Backend Test Suites (Jest & Supertest)
 ```bash
@@ -553,7 +553,7 @@ All protected endpoints require an `Authorization: Bearer <token>` header carryi
 
 ## Database
 
-ExpensEase relies on PostgreSQL 16 managed through an idempotent SQL migration system (`database/migrator.js`).
+ExpenseEase relies on PostgreSQL 16 managed through an idempotent SQL migration system (`database/migrator.js`).
 
 ### Schema Architecture
 
@@ -603,13 +603,13 @@ Application queries execute under the unprivileged `expensease_app` role (`NOSUP
 
 ## Scope and Limitations
 
-ExpensEase is architected as an MVP for SMB expense governance. The current release operates within the following documented boundaries:
+ExpenseEase is architected as an MVP for SMB expense governance. The current release operates within the following documented boundaries:
 
 1. **Storage Subsystem**: Receipt images are stored on the local server filesystem using UUID paths. Cloud object storage (e.g., AWS S3, Google Cloud Storage) is not implemented in the current scope.
 2. **Synchronous OCR & Processing**: OCR and AI extractions execute synchronously upon request. Distributed task queues (e.g., Celery, RabbitMQ) and event streaming platforms (e.g., Kafka) are explicitly omitted to keep infrastructure lightweight.
 3. **Integration Point Boundaries**: QuickBooks Online and Xero adapters generate verified, provider-compliant payload schemas. They do not execute live external OAuth handshakes or network synchronization in the current release.
 4. **Single-Currency Accounting**: Accounting operations assume single-currency integer-cent bookkeeping. Multi-currency foreign exchange revaluations are not supported.
-5. **No Direct Banking or Payouts**: ExpensEase manages expense approval, accounting generation, and export. It does not perform automated ACH transfers, employee payroll disbursements, or banking payment settlement.
+5. **No Direct Banking or Payouts**: ExpenseEase manages expense approval, accounting generation, and export. It does not perform automated ACH transfers, employee payroll disbursements, or banking payment settlement.
 6. **No Native Mobile Apps**: Mobile access is provided through a responsive Progressive Web Application (PWA). Native iOS, Android, Flutter, or React Native binaries are not part of the project scope.
 
 ---

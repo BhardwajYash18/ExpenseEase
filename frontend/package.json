@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "ExpensEase Responsive Progressive Web Application (PWA)",
+  "description": "ExpenseEase Responsive Progressive Web Application (PWA)",
   "scripts": {
     "dev": "concurrently -k -p \"[{name}]\" -n \"frontend,backend,ai\" -c \"cyan.bold,blue.bold,magenta.bold\" \"npm run dev:frontend\" \"npm run dev:backend\" \"npm run dev:ai\"",
     "dev:frontend": "vite",

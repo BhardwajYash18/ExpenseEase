@@ -1,1 +1,1 @@
-"""ExpensEase AI Service package."""
+"""ExpenseEase AI Service package."""

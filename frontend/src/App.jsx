@@ -185,7 +185,7 @@ function App() {
         <div className="sidebar-header">
           <div className="brand-badge">E</div>
           <div className="brand-title">
-            <span className="brand-name">ExpensEase</span>
+            <span className="brand-name">ExpenseEase</span>
             <span className="brand-tagline">SMB PLATFORM</span>
           </div>
         </div>
@@ -379,7 +379,7 @@ function App() {
                     E
                   </div>
                   <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    Sign in to ExpensEase
+                    Sign in to ExpenseEase
                   </h2>
                   <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginTop: '4px' }}>
                     Smart Employee Expense Management Platform
