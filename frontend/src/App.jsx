@@ -24,6 +24,7 @@ function App() {
 
   // Active navigation view: 'dashboard' | 'upload' | 'receipt-detail' | 'approvals' | 'finance' | 'mappings' | 'integrations'
   const [activeNav, setActiveNav] = useState('dashboard');
+  const [autoStartCamera, setAutoStartCamera] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -194,83 +195,92 @@ function App() {
           <div>
             <div className="nav-section-title">Operations &amp; Finance</div>
             <ul className="nav-list">
-              <li>
-                <button
-                  type="button"
-                  className={`nav-item-btn ${activeNav === 'dashboard' ? 'active' : ''}`}
-                  onClick={() => {
-                    setActiveNav('dashboard');
-                    setMobileMenuOpen(false);
-                  }}
-                >
-                  <span className="nav-item-icon">📊</span>
-                  <span>Dashboard</span>
-                </button>
-              </li>
-
-              {currentUser && currentUser.role === 'EMPLOYEE' && (
-                <li>
-                  <button
-                    type="button"
-                    className={`nav-item-btn ${activeNav === 'upload' ? 'active' : ''}`}
-                    onClick={() => {
-                      setActiveNav('upload');
-                      setMobileMenuOpen(false);
-                    }}
-                  >
-                    <span className="nav-item-icon">📸</span>
-                    <span>Submit Expense</span>
-                  </button>
-                </li>
-              )}
-
-              <li>
-                <button
-                  type="button"
-                  className={`nav-item-btn ${activeNav === 'receipt-detail' ? 'active' : ''}`}
-                  onClick={() => {
-                    setActiveNav('receipt-detail');
-                    setMobileMenuOpen(false);
-                  }}
-                >
-                  <span className="nav-item-icon">🧾</span>
-                  <span>Receipt OCR &amp; Inspect</span>
-                </button>
-              </li>
-
-              {currentUser && (currentUser.role === 'MANAGER' || currentUser.role === 'FINANCE') && (
-                <li>
-                  <button
-                    type="button"
-                    className={`nav-item-btn ${activeNav === 'approvals' ? 'active' : ''}`}
-                    onClick={() => {
-                      setActiveNav('approvals');
-                      setMobileMenuOpen(false);
-                    }}
-                  >
-                    <span className="nav-item-icon">🛡️</span>
-                    <span>Manager Approvals</span>
-                    {pendingCount > 0 && <span className="nav-item-badge">{pendingCount}</span>}
-                  </button>
-                </li>
-              )}
-
-              {currentUser && currentUser.role === 'FINANCE' && (
+              {currentUser ? (
                 <>
                   <li>
                     <button
                       type="button"
-                      className={`nav-item-btn ${activeNav === 'finance' ? 'active' : ''}`}
+                      className={`nav-item-btn ${activeNav === 'dashboard' ? 'active' : ''}`}
                       onClick={() => {
-                        setActiveNav('finance');
+                        setActiveNav('dashboard');
                         setMobileMenuOpen(false);
                       }}
                     >
-                      <span className="nav-item-icon">🏛️</span>
-                      <span>Finance Operations</span>
+                      <span className="nav-item-icon">📊</span>
+                      <span>Dashboard</span>
                     </button>
                   </li>
+
+                  {currentUser.role === 'EMPLOYEE' && (
+                    <li>
+                      <button
+                        type="button"
+                        className={`nav-item-btn ${activeNav === 'upload' ? 'active' : ''}`}
+                        onClick={() => {
+                          setActiveNav('upload');
+                          setMobileMenuOpen(false);
+                        }}
+                      >
+                        <span className="nav-item-icon">📸</span>
+                        <span>Submit Expense</span>
+                      </button>
+                    </li>
+                  )}
+
+                  <li>
+                    <button
+                      type="button"
+                      className={`nav-item-btn ${activeNav === 'receipt-detail' ? 'active' : ''}`}
+                      onClick={() => {
+                        setActiveNav('receipt-detail');
+                        setMobileMenuOpen(false);
+                      }}
+                    >
+                      <span className="nav-item-icon">🧾</span>
+                      <span>Receipt OCR &amp; Inspect</span>
+                    </button>
+                  </li>
+
+                  {(currentUser.role === 'MANAGER' || currentUser.role === 'FINANCE') && (
+                    <li>
+                      <button
+                        type="button"
+                        className={`nav-item-btn ${activeNav === 'approvals' ? 'active' : ''}`}
+                        onClick={() => {
+                          setActiveNav('approvals');
+                          setMobileMenuOpen(false);
+                        }}
+                      >
+                        <span className="nav-item-icon">🛡️</span>
+                        <span>Manager Approvals</span>
+                        {pendingCount > 0 && <span className="nav-item-badge">{pendingCount}</span>}
+                      </button>
+                    </li>
+                  )}
+
+                  {currentUser.role === 'FINANCE' && (
+                    <li>
+                      <button
+                        type="button"
+                        className={`nav-item-btn ${activeNav === 'finance' ? 'active' : ''}`}
+                        onClick={() => {
+                          setActiveNav('finance');
+                          setMobileMenuOpen(false);
+                        }}
+                      >
+                        <span className="nav-item-icon">🏛️</span>
+                        <span>Finance Operations</span>
+                      </button>
+                    </li>
+                  )}
                 </>
+              ) : (
+                <li>
+                  <div className="nav-item-btn active" style={{ cursor: 'default', opacity: 0.85 }}>
+                    <span className="nav-item-icon">🔑</span>
+                    <span>Authentication</span>
+                  </div>
+                </li>
               )}
             </ul>
           </div>
@@ -334,9 +344,10 @@ function App() {
               <input
                 type="text"
                 className="search-input"
-                placeholder="Search transactions, GL codes, receipts..."
+                placeholder={currentUser ? "Search transactions, GL codes, receipts..." : "Sign in to search transactions..."}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                disabled={!currentUser}
               />
             </div>
           </div>
@@ -651,7 +662,9 @@ function App() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                   <ReceiptCapture
                     authToken={authToken}
+                    autoStartCamera={autoStartCamera}
                     onReceiptUploaded={(uploadedReceipt) => {
+                      setAutoStartCamera(false);
                       setLatestReceipt(uploadedReceipt);
                       fetchReceipts(authToken);
                       setActiveNav('receipt-detail');
@@ -665,24 +678,51 @@ function App() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   {receiptsList.length > 0 && (
                     <div className="table-card" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-                      <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                        Select Active Voucher:
-                      </span>
-                      <select
-                        className="form-select"
-                        style={{ width: 'auto', minWidth: '280px' }}
-                        value={latestReceipt?.id || ''}
-                        onChange={(e) => {
-                          const found = receiptsList.find((r) => r.id === e.target.value);
-                          if (found) setLatestReceipt(found);
-                        }}
-                      >
-                        {receiptsList.map((r) => (
-                          <option key={r.id} value={r.id}>
-                            {r.original_filename || r.originalFilename || 'Receipt'} &bull; ID: {(r.id || '').slice(0, 8)}... ({r.workflow_state || r.workflowState || 'DRAFT'})
-                          </option>
-                        ))}
-                      </select>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                          Select Active Voucher:
+                        </span>
+                        <select
+                          className="form-select"
+                          style={{ width: 'auto', minWidth: '280px' }}
+                          value={latestReceipt?.id || ''}
+                          onChange={(e) => {
+                            const found = receiptsList.find((r) => r.id === e.target.value);
+                            if (found) setLatestReceipt(found);
+                          }}
+                        >
+                          {receiptsList.map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {r.original_filename || r.originalFilename || 'Receipt'} &bull; ID: {(r.id || '').slice(0, 8)}... ({r.workflow_state || r.workflowState || 'DRAFT'})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          id="btn-select-retake-camera"
+                          onClick={() => {
+                            setAutoStartCamera(true);
+                            setActiveNav('upload');
+                          }}
+                        >
+                          📷 Retake Picture
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-gold btn-sm"
+                          id="btn-select-add-receipt"
+                          onClick={() => {
+                            setAutoStartCamera(false);
+                            setActiveNav('upload');
+                          }}
+                        >
+                          ➕ Add More Receipts
+                        </button>
+                      </div>
                     </div>
                   )}
 
@@ -692,6 +732,20 @@ function App() {
                       authToken={authToken}
                       currentUser={currentUser}
                       onWorkflowUpdated={() => fetchReceipts(authToken)}
+                      onRetakePicture={() => {
+                        setAutoStartCamera(true);
+                        setActiveNav('upload');
+                      }}
+                      onAddMoreReceipts={() => {
+                        setAutoStartCamera(false);
+                        setActiveNav('upload');
+                      }}
+                      onReceiptDeleted={(deletedId) => {
+                        const remaining = receiptsList.filter((r) => r.id !== deletedId);
+                        setReceiptsList(remaining);
+                        setLatestReceipt(remaining.length > 0 ? remaining[0] : null);
+                        fetchReceipts(authToken);
+                      }}
                     />
                   ) : (
                     <div className="table-card" style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>

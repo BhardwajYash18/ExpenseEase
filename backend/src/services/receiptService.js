@@ -299,9 +299,65 @@ async function listReceipts(tenantId, options = {}) {
   });
 }
 
+/**
+ * Delete a receipt request/voucher and clean up file storage.
+ *
+ * @param {string} tenantId - Tenant UUID from JWT
+ * @param {string} receiptId - Receipt UUID
+ * @param {object} [userFilter] - Optional user filter { userId, role }
+ * @returns {Promise<{ id: string, deleted: boolean }>}
+ */
+async function deleteReceipt(tenantId, receiptId, userFilter = null) {
+  return withTenantContext(tenantId, async (client) => {
+    // 1. Verify receipt existence and ownership
+    let query = `SELECT id, storage_key, uploaded_by FROM receipts WHERE id = $1`;
+    const params = [receiptId];
+
+    if (userFilter && userFilter.role === 'EMPLOYEE') {
+      query += ` AND uploaded_by = $2`;
+      params.push(userFilter.userId);
+    }
+
+    const { rows } = await client.query(query, params);
+    if (!rows[0]) {
+      const err = new Error('Receipt not found or unauthorized to delete');
+      err.status = 404;
+      throw err;
+    }
+
+    const { storage_key } = rows[0];
+
+    // 2. Prevent deleting receipts that are part of a Finance Batch
+    const batchCheck = await client.query(
+      `SELECT id FROM finance_batch_items WHERE receipt_id = $1 LIMIT 1`,
+      [receiptId]
+    );
+    if (batchCheck.rows.length > 0) {
+      const err = new Error('Cannot delete a receipt voucher that has already been included in a Finance Batch');
+      err.status = 400;
+      throw err;
+    }
+
+    // 3. Delete database record (Cascades to extractions, validations, workflows)
+    await client.query(`DELETE FROM receipts WHERE id = $1`, [receiptId]);
+
+    // 4. Delete physical file from storage
+    if (storage_key) {
+      try {
+        await storageService.deleteFile(storage_key);
+      } catch (fileErr) {
+        console.warn(`[Storage] Failed to delete file for storage key ${storage_key}:`, fileErr.message);
+      }
+    }
+
+    return { id: receiptId, deleted: true };
+  });
+}
+
 module.exports = {
   uploadReceipt,
   getReceiptById,
   getReceiptFile,
   listReceipts,
+  deleteReceipt,
 };

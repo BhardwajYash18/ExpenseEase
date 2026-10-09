@@ -126,10 +126,28 @@ async function getOcr(req, res, next) {
   }
 }
 
+/**
+ * DELETE /api/receipts/:id
+ * Delete a receipt request/voucher and clean up physical file.
+ */
+async function remove(req, res, next) {
+  try {
+    const userFilter = { userId: req.user.id, role: req.user.role };
+    const result = await receiptService.deleteReceipt(req.user.tenantId, req.params.id, userFilter);
+    return res.status(200).json({ message: 'Receipt deleted successfully', id: result.id });
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: { message: err.message } });
+    }
+    next(err);
+  }
+}
+
 module.exports = {
   upload,
   list,
   getById,
   getFile,
   getOcr,
+  remove,
 };

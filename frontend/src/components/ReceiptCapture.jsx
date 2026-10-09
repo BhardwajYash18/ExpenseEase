@@ -1,9 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
-export default function ReceiptCapture({ authToken, onReceiptUploaded }) {
+export default function ReceiptCapture({ authToken, onReceiptUploaded, autoStartCamera = false }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [error, setError] = useState(null);
@@ -11,8 +11,99 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded }) {
   const [uploadProgress, setUploadProgress] = useState(null);
   const [dragOver, setDragOver] = useState(false);
 
+  // Live Camera states
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [cameraLoading, setCameraLoading] = useState(false);
+
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
+  const videoRef = useRef(null);
+
+  // Auto-start camera if requested by caller (e.g., retake picture action)
+  useEffect(() => {
+    if (autoStartCamera) {
+      startLiveCamera();
+    }
+  }, [autoStartCamera]);
+
+  // Stop camera stream tracks on unmount
+  useEffect(() => {
+    return () => {
+      stopLiveCamera();
+    };
+  }, []);
+
+  const startLiveCamera = async () => {
+    setError(null);
+    setCameraLoading(true);
+
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+        });
+        setIsCameraActive(true);
+        setCameraLoading(false);
+
+        // Attach stream after modal element renders
+        setTimeout(() => {
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            videoRef.current.play().catch((err) => {
+              console.warn('[Camera] Video play warning:', err);
+            });
+          }
+        }, 150);
+        return;
+      } catch (err) {
+        console.warn('[Camera] Live camera stream failed, using native file fallback:', err.message);
+        setCameraLoading(false);
+      }
+    }
+
+    // Fallback if WebRTC stream is denied/unavailable
+    if (cameraInputRef.current) {
+      cameraInputRef.current.click();
+    } else if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const stopLiveCamera = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const tracks = videoRef.current.srcObject.getTracks();
+      tracks.forEach((track) => track.stop());
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraActive(false);
+    setCameraLoading(false);
+  };
+
+  const capturePhotoFromStream = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          const file = new File([blob], `receipt-camera-${Date.now()}.jpg`, { type: 'image/jpeg' });
+          processFile(file);
+        }
+        stopLiveCamera();
+      },
+      'image/jpeg',
+      0.92
+    );
+  };
 
   const processFile = (file) => {
     setError(null);
@@ -62,6 +153,7 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded }) {
   };
 
   const handleClear = () => {
+    stopLiveCamera();
     setSelectedFile(null);
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
@@ -153,8 +245,95 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded }) {
         onChange={handleFileSelection}
       />
 
-      {/* Drop Zone */}
-      {!previewUrl ? (
+      {/* Live Camera Viewfinder Overlay */}
+      {isCameraActive ? (
+        <div
+          style={{
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-lg)',
+            padding: '16px',
+            backgroundColor: '#0f172a',
+            color: '#ffffff',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '14px',
+          }}
+        >
+          <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontWeight: 600, fontSize: '0.9375rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span className="live-pulse"></span>
+              Live Camera Viewfinder
+            </span>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              style={{ color: '#fff', borderColor: '#334155' }}
+              onClick={stopLiveCamera}
+            >
+              ✕ Close
+            </button>
+          </div>
+
+          <div
+            style={{
+              position: 'relative',
+              width: '100%',
+              maxWidth: '540px',
+              borderRadius: 'var(--radius-md)',
+              overflow: 'hidden',
+              backgroundColor: '#000000',
+              aspectRatio: '4 / 3',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+            {/* Viewfinder Overlay Lines */}
+            <div
+              style={{
+                position: 'absolute',
+                top: '10%',
+                left: '10%',
+                right: '10%',
+                bottom: '10%',
+                border: '2px dashed dashed var(--gold-primary)',
+                borderRadius: '8px',
+                pointerEvents: 'none',
+                opacity: 0.6,
+              }}
+            ></div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '12px', width: '100%', justifyContent: 'center' }}>
+            <button
+              type="button"
+              className="btn btn-gold btn-lg"
+              id="btn-snap-photo"
+              onClick={capturePhotoFromStream}
+              style={{ minWidth: '180px' }}
+            >
+              📸 Snap Photo
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline"
+              style={{ color: '#fff', borderColor: '#334155' }}
+              onClick={stopLiveCamera}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : !previewUrl ? (
+        /* Drop Zone */
         <div
           onDrop={handleDrop}
           onDragOver={handleDragOver}
@@ -208,13 +387,15 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded }) {
               type="button"
               className="btn btn-outline"
               id="btn-take-photo"
-              onClick={() => cameraInputRef.current?.click()}
+              onClick={startLiveCamera}
+              disabled={cameraLoading}
             >
-              📷 Open Camera
+              {cameraLoading ? 'Starting Camera...' : '📷 Open Camera'}
             </button>
           </div>
         </div>
       ) : (
+        /* Image Preview Box */
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#f8fafc', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
             <div>
@@ -265,3 +446,4 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded }) {
     </div>
   );
 }
+

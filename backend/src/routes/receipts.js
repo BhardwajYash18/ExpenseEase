@@ -97,6 +97,17 @@ router.get(
 );
 
 /**
+ * DELETE /api/receipts/:id
+ * Delete a receipt voucher and remove its physical file from storage.
+ */
+router.delete(
+  '/:id',
+  authenticate,
+  requireRole('EMPLOYEE', 'MANAGER', 'FINANCE'),
+  receiptController.remove
+);
+
+/**
  * GET /api/receipts/:id/file
  * Download/view the original stored receipt image.
  */

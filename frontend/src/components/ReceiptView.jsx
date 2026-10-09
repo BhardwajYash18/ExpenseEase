@@ -10,7 +10,15 @@ const ALLOWED_CATEGORIES = [
   'Other',
 ];
 
-export default function ReceiptView({ receipt, authToken, currentUser, onWorkflowUpdated }) {
+export default function ReceiptView({
+  receipt,
+  authToken,
+  currentUser,
+  onWorkflowUpdated,
+  onRetakePicture,
+  onAddMoreReceipts,
+  onReceiptDeleted,
+}) {
   if (!receipt) return null;
 
   const [extraction, setExtraction] = useState(null);
@@ -20,6 +28,11 @@ export default function ReceiptView({ receipt, authToken, currentUser, onWorkflo
   const [editForm, setEditForm] = useState({});
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Deletion States
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
 
   // Validation States
   const [validation, setValidation] = useState(null);
@@ -37,6 +50,33 @@ export default function ReceiptView({ receipt, authToken, currentUser, onWorkflo
   // OCR Raw text modal
   const [showRawOcr, setShowRawOcr] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
+
+  async function handleDeleteReceipt() {
+    if (!receipt?.id || !authToken) return;
+    setDeleteLoading(true);
+    setDeleteError(null);
+
+    try {
+      const res = await fetch(`/api/receipts/${receipt.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error?.message || 'Failed to delete receipt');
+      }
+
+      setShowDeleteConfirm(false);
+      if (onReceiptDeleted) {
+        onReceiptDeleted(receipt.id);
+      }
+    } catch (err) {
+      setDeleteError(err.message);
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
 
   // Fetch extraction, validation, and workflow
   useEffect(() => {
@@ -321,7 +361,36 @@ export default function ReceiptView({ receipt, authToken, currentUser, onWorkflo
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {onRetakePicture && (
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              id="retake-picture-header-btn"
+              onClick={onRetakePicture}
+            >
+              📷 Retake Picture
+            </button>
+          )}
+          {onAddMoreReceipts && (
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              id="add-more-receipts-header-btn"
+              onClick={onAddMoreReceipts}
+            >
+              ➕ Add More Receipts
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            style={{ color: '#ef4444', borderColor: '#fca5a5' }}
+            id="delete-receipt-header-btn"
+            onClick={() => setShowDeleteConfirm(true)}
+          >
+            🗑️ Delete Request
+          </button>
           <button
             type="button"
             className="btn btn-outline btn-sm"
@@ -351,15 +420,51 @@ export default function ReceiptView({ receipt, authToken, currentUser, onWorkflo
           <div className="split-panel-header">
             <span className="split-panel-title">Physical Scan View</span>
             <div style={{ display: 'flex', gap: '6px' }}>
-              <span className="status-pill policy-pass">
+              <span className={`status-pill ${(receipt.ocrStatus === 'COMPLETED' || receipt.ocr_status === 'COMPLETED') ? 'policy-pass' : (receipt.ocrStatus === 'FAILED' || receipt.ocr_status === 'FAILED') ? 'rejected' : 'draft'}`}>
                 <span className="status-dot"></span>
-                <span>OCR: {receipt.ocrStatus}</span>
+                <span>OCR: {receipt.ocrStatus || receipt.ocr_status}</span>
               </span>
               <span className="status-pill draft">300 DPI</span>
             </div>
           </div>
 
           <div className="split-panel-body">
+            {(receipt.ocrStatus === 'FAILED' || receipt.ocr_status === 'FAILED') && (
+              <div className="alert alert-danger" style={{ marginBottom: '14px' }}>
+                <div style={{ fontWeight: 600, marginBottom: '4px' }}>⚠️ OCR Text Extraction Failed</div>
+                <div style={{ fontSize: '0.8125rem' }}>
+                  The uploaded receipt image could not be parsed clearly. You can retake the picture using your live camera, upload a clearer file, or delete this failed request.
+                </div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
+                  {onRetakePicture && (
+                    <button
+                      type="button"
+                      className="btn btn-gold btn-sm"
+                      onClick={onRetakePicture}
+                    >
+                      📷 Open Camera &amp; Retake
+                    </button>
+                  )}
+                  {onAddMoreReceipts && (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={onAddMoreReceipts}
+                    >
+                      📁 Browse &amp; Upload New File
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    style={{ color: '#ef4444', borderColor: '#fca5a5' }}
+                    onClick={() => setShowDeleteConfirm(true)}
+                  >
+                    🗑️ Delete Failed Request
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="scan-preview-box">
               <img
                 src={`/api/receipts/${receipt.id}/file`}
@@ -818,6 +923,53 @@ export default function ReceiptView({ receipt, authToken, currentUser, onWorkflo
                 onClick={() => handleWorkflowAction(reasonModal.type, reasonModal.reason)}
               >
                 {actionLoading ? 'Recording...' : 'Confirm Decision'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Receipt Voucher Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="modal-overlay">
+          <div className="modal-dialog" style={{ maxWidth: '440px' }}>
+            <div className="modal-header">
+              <h4 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#dc2626' }}>
+                <span>🗑️</span> Delete Receipt Voucher?
+              </h4>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowDeleteConfirm(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+                Are you sure you want to permanently delete this receipt voucher request (<strong>{receipt.originalFilename || receipt.original_filename || 'Receipt Voucher'}</strong>)?
+              </p>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                This will purge the physical scan image and all associated extraction and validation data from the system. This action cannot be undone.
+              </p>
+
+              {deleteError && (
+                <div className="alert alert-danger" style={{ marginTop: '12px' }}>
+                  <strong>Error:</strong> {deleteError}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleteLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                style={{ backgroundColor: '#dc2626', color: '#ffffff', borderColor: '#dc2626' }}
+                onClick={handleDeleteReceipt}
+                disabled={deleteLoading}
+              >
+                {deleteLoading ? 'Deleting Voucher...' : 'Yes, Delete Request'}
               </button>
             </div>
           </div>
