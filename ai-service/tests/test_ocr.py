@@ -62,7 +62,7 @@ def test_extract_text_resilience():
     assert "raw_text" in result
     assert "ocr_status" in result
     assert "ocr_engine" in result
-    assert result["ocr_engine"] == "tesseract"
+    assert result["ocr_engine"] in ("tesseract", "rapidocr")
     assert result["ocr_status"] in ("COMPLETED", "FAILED")
     assert "processed_at" in result
 
@@ -80,7 +80,7 @@ def test_ocr_extract_endpoint_success():
     data = response.json()
     assert "raw_text" in data
     assert "ocr_status" in data
-    assert data["ocr_engine"] == "tesseract"
+    assert data["ocr_engine"] in ("tesseract", "rapidocr")
     assert data["ocr_status"] in ("COMPLETED", "FAILED")
 
 

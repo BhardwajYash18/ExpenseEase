@@ -132,6 +132,18 @@ router.get(
 );
 
 /**
+ * POST /api/receipts/:id/retry-ocr
+ * Re-trigger OCR extraction on an existing stored receipt.
+ */
+router.post(
+  '/:id/retry-ocr',
+  authenticate,
+  requireRole('EMPLOYEE', 'MANAGER', 'FINANCE'),
+  receiptController.retryOcr
+);
+
+
+/**
  * POST /api/receipts/:id/extraction
  * Trigger AI structured extraction on the receipt's OCR text.
  */

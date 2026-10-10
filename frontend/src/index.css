@@ -82,8 +82,10 @@
 
   /* Sizing */
   --sidebar-width: 256px;
+  --sidebar-collapsed-width: 72px;
   --topbar-height: 64px;
 }
+
 
 /* ==========================================================================
    Base & Reset
@@ -144,8 +146,77 @@ button, input, select, textarea {
   flex-direction: column;
   flex-shrink: 0;
   border-right: 1px solid var(--sidebar-border);
-  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 50;
+}
+
+.sidebar.collapsed {
+  width: var(--sidebar-collapsed-width);
+}
+
+.sidebar-collapse-toggle {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--sidebar-border);
+  color: var(--sidebar-text);
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.sidebar-collapse-toggle:hover {
+  background: var(--sidebar-active-bg);
+  color: var(--gold-primary);
+  border-color: var(--gold-primary);
+}
+
+.sidebar.collapsed .sidebar-header {
+  padding: 0 10px;
+  justify-content: center;
+}
+
+.sidebar.collapsed .brand-title {
+  display: none !important;
+}
+
+.sidebar.collapsed .nav-section-title {
+  display: none !important;
+}
+
+.sidebar.collapsed .nav-item-btn {
+  justify-content: center;
+  padding: 10px 0;
+}
+
+.sidebar.collapsed .nav-item-icon {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.sidebar.collapsed .nav-item-badge {
+  display: none !important;
+}
+
+.sidebar.collapsed .user-profile-card {
+  justify-content: center;
+}
+
+.sidebar.collapsed .user-meta,
+.sidebar.collapsed .btn-signout {
+  display: none !important;
+}
+
+.sidebar.collapsed .sidebar-footer {
+  padding: 12px 6px;
+  display: flex;
+  justify-content: center;
 }
 
 .sidebar-header {
@@ -161,6 +232,7 @@ button, input, select, textarea {
   width: 34px;
   height: 34px;
   border-radius: var(--radius-md);
+
   background: linear-gradient(135deg, #eab308 0%, #ca8a04 100%);
   color: #0f172a;
   display: flex;

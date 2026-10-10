@@ -354,10 +354,44 @@ async function deleteReceipt(tenantId, receiptId, userFilter = null) {
   });
 }
 
+/**
+ * Retry OCR processing for an existing receipt file.
+ *
+ * @param {string} tenantId - Tenant UUID from JWT
+ * @param {string} receiptId - Receipt UUID
+ * @param {object} [userFilter] - Optional user filter { userId, role }
+ * @returns {Promise<object>} Updated receipt metadata
+ */
+async function retryOCR(tenantId, receiptId, userFilter = null) {
+  return withTenantContext(tenantId, async (client) => {
+    let query = `SELECT id, storage_key, uploaded_by FROM receipts WHERE id = $1`;
+    const params = [receiptId];
+
+    if (userFilter && userFilter.role === 'EMPLOYEE') {
+      query += ` AND uploaded_by = $2`;
+      params.push(userFilter.userId);
+    }
+
+    const { rows } = await client.query(query, params);
+    if (!rows[0]) {
+      const err = new Error('Receipt not found or unauthorized');
+      err.status = 404;
+      throw err;
+    }
+
+    const { storage_key } = rows[0];
+    await processOCR(tenantId, receiptId, storage_key);
+
+    return getReceiptById(tenantId, receiptId, userFilter);
+  });
+}
+
 module.exports = {
   uploadReceipt,
   getReceiptById,
   getReceiptFile,
   listReceipts,
   deleteReceipt,
+  retryOCR,
 };
+

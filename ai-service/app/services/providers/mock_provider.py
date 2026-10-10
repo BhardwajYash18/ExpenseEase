@@ -57,19 +57,40 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
         # 1. Merchant Extraction
         merchant_name: Optional[str] = None
         merchant_confidence = 0.0
-        # Usually merchant is in the first 3 lines
-        for line in lines[:3]:
-            # Filter out dates, amounts, receipt words
-            if not re.search(r'\b(receipt|invoice|bill|tax|date|total|welcome|thank you)\b', line, re.I) and not re.search(r'^\d', line):
-                merchant_name = line[:255]
-                merchant_confidence = 0.90
-                break
+
+        # Check for explicit Merchant: label or section
+        for idx, line in enumerate(lines):
+            if re.match(r'^(?:Merchant|Store|Vendor)\b', line, re.I):
+                lbl_m = re.match(r'^(?:Merchant|Store|Vendor)\s*[:=]?\s*(.+)$', line, re.I)
+                if lbl_m and not re.search(r'\b(payment|method|date|gstin)\b', lbl_m.group(1), re.I):
+                    merchant_name = lbl_m.group(1).strip()[:255]
+                    merchant_confidence = 0.95
+                    break
+                # Search subsequent lines for merchant name
+                for offset in range(1, 4):
+                    if idx + offset < len(lines):
+                        cand = lines[idx + offset].strip()
+                        if not re.search(r'\b(payment|method|date|total|rate|qty|subtotal|upi|card|cash|gstin|receipt|tax|invoice|bill|expenses|simple)\b', cand, re.I) and len(cand) > 2:
+                            merchant_name = cand[:255]
+                            merchant_confidence = 0.95
+                            break
+                if merchant_name:
+                    break
+
+        if not merchant_name:
+            for line in lines[:6]:
+                # Filter out platform name, dates, amounts, receipt words
+                if not re.search(r'\b(receipt|invoice|bill|tax|date|total|welcome|thank you|expenseease|expenses|simple)\b', line, re.I) and not re.search(r'^\d', line):
+                    merchant_name = line[:255]
+                    merchant_confidence = 0.85
+                    break
 
         if not merchant_name and lines:
             merchant_name = lines[0][:255]
             merchant_confidence = 0.50
 
-        # 2. Date Extraction (YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY, etc.)
+
+        # 2. Date Extraction (YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY, DD Mon YYYY, etc.)
         receipt_date: Optional[date] = None
         date_confidence = 0.0
         # Match YYYY-MM-DD or YYYY/MM/DD
@@ -91,13 +112,33 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
                 except ValueError:
                     pass
 
+        if not receipt_date:
+            # Match DD Mon YYYY (e.g. 08 Oct 2026, 8 October 2026, handling OCR 0ct)
+            mon_map = {
+                'jan': 1, 'january': 1, 'feb': 2, 'february': 2, 'mar': 3, 'march': 3,
+                'apr': 4, 'april': 4, 'may': 5, 'jun': 6, 'june': 6, 'jul': 7, 'july': 7,
+                'aug': 8, 'august': 8, 'sep': 9, 'september': 9, 'oct': 10, '0ct': 10, 'october': 10,
+                'nov': 11, 'november': 11, 'dec': 12, 'december': 12
+            }
+            mon_match = re.search(r'\b([0-3]?\d)[\s\-_]+([A-Za-z0-9]{3,9})[\s\-_]+(20\d\d)\b', cleaned_text)
+            if mon_match:
+                d_str, m_str, y_str = mon_match.group(1), mon_match.group(2).lower(), mon_match.group(3)
+                m_str_clean = m_str.replace('0', 'o')
+                m_num = mon_map.get(m_str) or mon_map.get(m_str_clean)
+                if m_num:
+                    try:
+                        receipt_date = date(int(y_str), m_num, int(d_str))
+                        date_confidence = 0.92
+                    except Exception:
+                        pass
+
         # 3. Currency Detection
         currency = "USD"
         if "€" in cleaned_text or re.search(r'\bEUR\b', cleaned_text, re.I):
             currency = "EUR"
         elif "£" in cleaned_text or re.search(r'\bGBP\b', cleaned_text, re.I):
             currency = "GBP"
-        elif "₹" in cleaned_text or re.search(r'\bINR\b', cleaned_text, re.I):
+        elif "₹" in cleaned_text or re.search(r'\b(INR|GSTIN|India|Google Pay|UPI|Paytm)\b', cleaned_text, re.I):
             currency = "INR"
         elif "$" in cleaned_text or re.search(r'\bUSD\b', cleaned_text, re.I):
             currency = "USD"
@@ -109,7 +150,7 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
         total_confidence = 0.0
 
         # Look for explicit Total lines
-        total_match = re.search(r'\b(?:TOTAL|AMOUNT DUE|BALANCE DUE|GRAND TOTAL)\s*[:=]?\s*[\$€£₹]?\s*([0-9]+[.,][0-9]{2})\b', cleaned_text, re.I)
+        total_match = re.search(r'\b(?:TOTAL\s*(?:AMOUNT)?|AMOUNT DUE|BALANCE DUE|GRAND TOTAL)\s*(?:\([^)]*\))?\s*[:=]?\s*[\$€£₹]?\s*([0-9]+[.,][0-9]{2})\b', cleaned_text, re.I)
         if total_match:
             val_str = total_match.group(1).replace(',', '.')
             try:
@@ -119,7 +160,7 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
                 pass
 
         # Subtotal
-        subtotal_match = re.search(r'\b(?:SUBTOTAL|SUB TOTAL|NET AMOUNT)\s*[:=]?\s*[\$€£₹]?\s*([0-9]+[.,][0-9]{2})\b', cleaned_text, re.I)
+        subtotal_match = re.search(r'\b(?:SUBTOTAL|SUB TOTAL|NET AMOUNT)\s*(?:\([^)]*\))?\s*[:=]?\s*[\$€£₹]?\s*([0-9]+[.,][0-9]{2})\b', cleaned_text, re.I)
         if subtotal_match:
             val_str = subtotal_match.group(1).replace(',', '.')
             try:
@@ -128,7 +169,7 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
                 pass
 
         # Tax
-        tax_match = re.search(r'\b(?:TAX|VAT|GST|HST)\s*[:=]?\s*[\$€£₹]?\s*([0-9]+[.,][0-9]{2})\b', cleaned_text, re.I)
+        tax_match = re.search(r'\b(?:TAX|VAT|GST|HST)\s*(?:\([^)]*\))?\s*[:=]?\s*[\$€£₹]?\s*([0-9]+[.,][0-9]{2})\b', cleaned_text, re.I)
         if tax_match:
             val_str = tax_match.group(1).replace(',', '.')
             try:
@@ -152,9 +193,18 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
 
         # 5. Receipt Number
         receipt_number: Optional[str] = None
-        rcpt_num_match = re.search(r'\b(?:RECEIPT|INVOICE|ORDER|TRANS|TICKET)\s*(?:#|NO\.?|NUM)?\s*[:=]?\s*([A-Z0-9\-_]{4,20})\b', cleaned_text, re.I)
+        # Try explicit number prefix (# / No / Num) first
+        rcpt_num_match = re.search(r'\b(?:RECEIPT|INVOICE|ORDER|TRANS|TICKET)\s*(?:#|NO\.?|NUM)\s*[:=]?\s*([A-Za-z0-9\-_]{4,30})\b', cleaned_text, re.I)
         if rcpt_num_match:
             receipt_number = rcpt_num_match.group(1)
+        else:
+            rcpt_num_match = re.search(r'\b(?:RECEIPT|INVOICE|ORDER|TRANS|TICKET)\s*[:=]?\s*([A-Za-z0-9\-_]{4,30})\b', cleaned_text, re.I)
+            if rcpt_num_match:
+                candidate_num = rcpt_num_match.group(1)
+                if not re.search(r'^(expenseease|receipt)$', candidate_num, re.I):
+                    receipt_number = candidate_num
+
+
 
         # 6. Category Suggestion
         suggested_category = "Other"

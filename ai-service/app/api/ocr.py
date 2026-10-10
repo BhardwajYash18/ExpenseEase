@@ -61,7 +61,8 @@ async def ocr_extract(file: UploadFile = File(...)):
         # If preprocessing fails, attempt OCR on the original image
         preprocessed_bytes = image_bytes
 
-    # Step 2: Extract text via OCR
-    result = extract_text(preprocessed_bytes)
+    # Step 2: Extract text via OCR (with fallback to raw image bytes if needed)
+    result = extract_text(preprocessed_bytes, raw_image_bytes=image_bytes)
 
     return OCRResponse(**result)
+

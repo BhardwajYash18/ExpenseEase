@@ -143,11 +143,30 @@ async function remove(req, res, next) {
   }
 }
 
+/**
+ * POST /api/receipts/:id/retry-ocr
+ * Re-trigger OCR extraction on an existing receipt file.
+ */
+async function retryOcr(req, res, next) {
+  try {
+    const userFilter = { userId: req.user.id, role: req.user.role };
+    const receipt = await receiptService.retryOCR(req.user.tenantId, req.params.id, userFilter);
+    return res.status(200).json({ receipt });
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: { message: err.message } });
+    }
+    next(err);
+  }
+}
+
 module.exports = {
   upload,
   list,
   getById,
   getFile,
   getOcr,
+  retryOcr,
   remove,
 };
+

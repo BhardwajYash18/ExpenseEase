@@ -28,6 +28,7 @@ export default function ReceiptView({
   const [editForm, setEditForm] = useState({});
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [retryOcrLoading, setRetryOcrLoading] = useState(false);
 
   // Deletion States
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -165,18 +166,56 @@ export default function ReceiptView({
   }, [receipt?.id, authToken]);
 
   function initEditForm(ext) {
-    if (!ext) return;
-    const eff = ext.effectiveValues || {};
+    const eff = ext?.effectiveValues || {};
+    const conf = ext?.confirmedData || {};
+    const total = eff.totalAmount !== null && eff.totalAmount !== undefined ? eff.totalAmount : '';
+    const req = conf.requestedAmount !== null && conf.requestedAmount !== undefined
+      ? conf.requestedAmount
+      : (eff.requestedAmount !== null && eff.requestedAmount !== undefined ? eff.requestedAmount : total);
+    const desc = conf.reimbursementDescription || eff.reimbursementDescription || '';
+
     setEditForm({
       merchantName: eff.merchantName || '',
-      receiptDate: eff.receiptDate ? eff.receiptDate.slice(0, 10) : '',
-      totalAmount: eff.totalAmount !== null && eff.totalAmount !== undefined ? eff.totalAmount : '',
+      receiptDate: eff.receiptDate ? eff.receiptDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
+      totalAmount: total,
+      requestedAmount: req,
+      description: desc,
       subtotalAmount: eff.subtotalAmount !== null && eff.subtotalAmount !== undefined ? eff.subtotalAmount : '',
       taxAmount: eff.taxAmount !== null && eff.taxAmount !== undefined ? eff.taxAmount : '',
-      currency: eff.currency || 'USD',
+      currency: eff.currency || 'INR',
       receiptNumber: eff.receiptNumber || '',
       category: eff.category || 'Other',
     });
+  }
+
+  // Trigger OCR Retry (using robust RapidOCR engine)
+  async function handleRetryOcr() {
+    if (!receipt?.id || !authToken) return;
+    setRetryOcrLoading(true);
+    setExtractError(null);
+    try {
+      const res = await fetch(`/api/receipts/${receipt.id}/retry-ocr`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error?.message || 'Failed to retry OCR parsing');
+      }
+      if (data.receipt) {
+        receipt.ocrStatus = data.receipt.ocrStatus;
+        receipt.ocrRawText = data.receipt.ocrRawText;
+        receipt.ocr_raw_text = data.receipt.ocrRawText;
+        receipt.ocr_status = data.receipt.ocrStatus;
+        if (data.receipt.ocrStatus === 'COMPLETED') {
+          await handleTriggerExtraction();
+        }
+      }
+    } catch (err) {
+      setExtractError(err.message);
+    } finally {
+      setRetryOcrLoading(false);
+    }
   }
 
   // Trigger AI extraction
@@ -205,7 +244,7 @@ export default function ReceiptView({
     }
   }
 
-  // Save Confirmed Values
+  // Save Confirmed Values (manual edits, requested amount, business description)
   async function handleSaveConfirmed(e) {
     e.preventDefault();
     setSaveLoading(true);
@@ -213,10 +252,16 @@ export default function ReceiptView({
     setSaveSuccess(false);
 
     try {
+      const totalNum = editForm.totalAmount !== '' ? Number(editForm.totalAmount) : null;
+      const reqNum = editForm.requestedAmount !== '' ? Number(editForm.requestedAmount) : totalNum;
+
       const payload = {
         merchantName: editForm.merchantName || null,
         receiptDate: editForm.receiptDate || null,
-        totalAmount: editForm.totalAmount !== '' ? Number(editForm.totalAmount) : null,
+        totalAmount: totalNum,
+        requestedAmount: reqNum,
+        description: editForm.description || null,
+        reimbursementDescription: editForm.description || null,
         subtotalAmount: editForm.subtotalAmount !== '' ? Number(editForm.subtotalAmount) : null,
         taxAmount: editForm.taxAmount !== '' ? Number(editForm.taxAmount) : null,
         currency: editForm.currency || 'USD',
@@ -436,10 +481,18 @@ export default function ReceiptView({
                   The uploaded receipt image could not be parsed clearly. You can retake the picture using your live camera, upload a clearer file, or delete this failed request.
                 </div>
                 <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-gold btn-sm"
+                    onClick={handleRetryOcr}
+                    disabled={retryOcrLoading}
+                  >
+                    🔄 {retryOcrLoading ? 'Retrying OCR...' : 'Retry OCR Parsing'}
+                  </button>
                   {onRetakePicture && (
                     <button
                       type="button"
-                      className="btn btn-gold btn-sm"
+                      className="btn btn-outline btn-sm"
                       onClick={onRetakePicture}
                     >
                       📷 Open Camera &amp; Retake
@@ -463,6 +516,7 @@ export default function ReceiptView({
                     🗑️ Delete Failed Request
                   </button>
                 </div>
+
               </div>
             )}
             <div className="scan-preview-box">
@@ -531,16 +585,19 @@ export default function ReceiptView({
               {extraction && (
                 <span className="status-pill policy-pass">
                   <span className="status-dot"></span>
-                  <span>AI Confidence: 96%</span>
+                  <span>AI Confidence: {Math.round((extraction.aiData?.confidenceScore || 0.92) * 100)}%</span>
                 </span>
               )}
-              {extraction && !isEditing && (
+              {!isEditing && (
                 <button
                   type="button"
                   className="btn btn-outline btn-sm"
-                  onClick={() => setIsEditing(true)}
+                  onClick={() => {
+                    initEditForm(extraction);
+                    setIsEditing(true);
+                  }}
                 >
-                  ✏️ Edit
+                  ✏️ {extraction ? 'Edit Details & Claim' : 'Enter Details Manually'}
                 </button>
               )}
             </div>
@@ -558,19 +615,45 @@ export default function ReceiptView({
               </div>
             )}
 
-            {!extraction && !loadingExtraction && (
+            {!extraction && !loadingExtraction && !isEditing && (
               <div style={{ textAlign: 'center', padding: '30px 20px', background: '#f8fafc', borderRadius: 'var(--radius-md)', border: '1px dashed var(--border-default)' }}>
                 <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '14px' }}>
-                  OCR text captured. Click below to extract structured fields (merchant, amount, dates, line items) with assistive AI.
+                  {isOcrCompleted
+                    ? 'OCR text captured. Extract structured fields with assistive AI, or enter and adjust your reimbursement details manually.'
+                    : 'OCR parsing not yet complete or needs retry. You can run OCR, or directly enter your reimbursement details and requested amount.'}
                 </p>
-                <button
-                  type="button"
-                  className="btn btn-gold"
-                  onClick={handleTriggerExtraction}
-                  disabled={loadingExtraction || !isOcrCompleted}
-                >
-                  🚀 Run Structured AI Extraction
-                </button>
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                  {isOcrCompleted && (
+                    <button
+                      type="button"
+                      className="btn btn-gold"
+                      onClick={handleTriggerExtraction}
+                      disabled={loadingExtraction}
+                    >
+                      🚀 Run Structured AI Extraction
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    onClick={() => {
+                      initEditForm(null);
+                      setIsEditing(true);
+                    }}
+                  >
+                    ✏️ Enter Details &amp; Request Manually
+                  </button>
+                  {(receipt.ocrStatus === 'FAILED' || receipt.ocr_status === 'FAILED') && (
+                    <button
+                      type="button"
+                      className="btn btn-gold"
+                      onClick={handleRetryOcr}
+                      disabled={retryOcrLoading}
+                    >
+                      🔄 {retryOcrLoading ? 'Parsing with RapidOCR...' : 'Retry OCR Text Extraction'}
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -580,7 +663,7 @@ export default function ReceiptView({
               </div>
             )}
 
-            {/* Extracted Form Fields */}
+            {/* Extracted Form Fields (View Mode) */}
             {extraction && !isEditing && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div className="form-grid-2">
@@ -609,19 +692,47 @@ export default function ReceiptView({
                   </div>
                 </div>
 
-                <div className="form-grid-2" style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+                {/* Financial Summary: Receipt Total vs Requested Reimbursement Amount */}
+                <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', display: 'grid', gridTemplateColumns: '1fr 1.2fr 1fr', gap: '12px', alignItems: 'center' }}>
+                  <div className="form-group">
+                    <span className="form-label">Receipt Slip Total</span>
+                    <div style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--text-secondary)' }}>
+                      {effective.currency || 'INR'} {Number(effective.totalAmount || 0).toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="form-group" style={{ background: 'var(--gold-bg-subtle)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--gold-border-subtle)' }}>
+                    <span className="form-label" style={{ color: 'var(--gold-hover)', fontWeight: 700, fontSize: '0.75rem' }}>
+                      ★ Requested Reimbursement
+                    </span>
+                    <div style={{ fontWeight: 800, fontSize: '1.3rem', color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}>
+                      {effective.currency || 'INR'} {Number(effective.requestedAmount ?? effective.totalAmount ?? 0).toFixed(2)}
+                    </div>
+                  </div>
                   <div className="form-group">
                     <span className="form-label">Tax / GST Amount</span>
                     <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
-                      {effective.taxAmount !== null ? `${effective.currency || 'USD'} ${Number(effective.taxAmount).toFixed(2)}` : '0.00'}
+                      {effective.taxAmount !== null ? `${effective.currency || 'INR'} ${Number(effective.taxAmount).toFixed(2)}` : '0.00'}
                     </div>
                   </div>
-                  <div className="form-group">
-                    <span className="form-label">Total Reimbursable Amount</span>
-                    <div style={{ fontWeight: 800, fontSize: '1.25rem', color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}>
-                      {effective.currency || 'USD'} {Number(effective.totalAmount || 0).toFixed(2)}
-                    </div>
+                </div>
+
+                {/* Employee Request Explanation & Business Justification */}
+                <div style={{ background: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <span className="form-label" style={{ color: 'var(--text-primary)', fontWeight: 700, margin: 0 }}>
+                      📝 Employee Business Purpose &amp; Description
+                    </span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Required for Approval Review</span>
                   </div>
+                  <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', margin: 0, lineHeight: 1.5 }}>
+                    {effective.reimbursementDescription ? (
+                      effective.reimbursementDescription
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                        No description provided yet. Click "Edit Details &amp; Claim" above to write an explanation for your reimbursement request.
+                      </span>
+                    )}
+                  </p>
                 </div>
 
                 {/* Line Items if present */}
@@ -653,17 +764,22 @@ export default function ReceiptView({
               </div>
             )}
 
-            {/* Editable Form Mode */}
-            {extraction && isEditing && (
-              <form onSubmit={handleSaveConfirmed} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {/* Editable Form Mode (Allows updating OCR details, requested amount, and description) */}
+            {isEditing && (
+              <form onSubmit={handleSaveConfirmed} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ background: '#fefce8', border: '1px solid #fef08a', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: '0.8125rem', color: '#854d0e' }}>
+                  ✏️ <strong>Employee Correction &amp; Reimbursement Claim Form:</strong> Modify any values parsed by OCR, adjust your requested claim amount, and explain your business request below.
+                </div>
+
                 <div className="form-grid-2">
                   <div className="form-group">
-                    <label className="form-label">Merchant Name</label>
+                    <label className="form-label">Merchant / Vendor Name</label>
                     <input
                       type="text"
                       className="form-input"
                       value={editForm.merchantName}
                       onChange={(e) => setEditForm({ ...editForm, merchantName: e.target.value })}
+                      placeholder="e.g. The Urban Brew Café"
                       required
                     />
                   </div>
@@ -674,11 +790,12 @@ export default function ReceiptView({
                       className="form-input"
                       value={editForm.receiptDate}
                       onChange={(e) => setEditForm({ ...editForm, receiptDate: e.target.value })}
+                      required
                     />
                   </div>
                 </div>
 
-                <div className="form-grid-2">
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 1fr', gap: '10px' }}>
                   <div className="form-group">
                     <label className="form-label">Invoice / Receipt #</label>
                     <input
@@ -686,10 +803,11 @@ export default function ReceiptView({
                       className="form-input"
                       value={editForm.receiptNumber}
                       onChange={(e) => setEditForm({ ...editForm, receiptNumber: e.target.value })}
+                      placeholder="e.g. EE20261008-0147"
                     />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Category</label>
+                    <label className="form-label">Expense Category</label>
                     <select
                       className="form-select"
                       value={editForm.category}
@@ -700,30 +818,97 @@ export default function ReceiptView({
                       ))}
                     </select>
                   </div>
+                  <div className="form-group">
+                    <label className="form-label">Currency</label>
+                    <select
+                      className="form-select"
+                      value={editForm.currency}
+                      onChange={(e) => setEditForm({ ...editForm, currency: e.target.value })}
+                    >
+                      <option value="INR">INR (₹)</option>
+                      <option value="USD">USD ($)</option>
+                      <option value="EUR">EUR (€)</option>
+                      <option value="GBP">GBP (£)</option>
+                    </select>
+                  </div>
                 </div>
 
-                <div className="form-grid-2">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1fr', gap: '10px', background: '#f8fafc', padding: '14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
                   <div className="form-group">
-                    <label className="form-label">Total Amount</label>
+                    <label className="form-label">Receipt Slip Total</label>
                     <input
                       type="number"
                       step="0.01"
+                      min="0"
                       className="form-input"
                       value={editForm.totalAmount}
-                      onChange={(e) => setEditForm({ ...editForm, totalAmount: e.target.value })}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setEditForm((prev) => ({
+                          ...prev,
+                          totalAmount: val,
+                          // If requested amount was empty or equal to previous total, keep in sync
+                          requestedAmount: prev.requestedAmount === '' || prev.requestedAmount === prev.totalAmount ? val : prev.requestedAmount,
+                        }));
+                      }}
+                      placeholder="0.00"
                       required
                     />
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginTop: '3px' }}>
+                      Exact total on receipt slip
+                    </span>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Tax Amount</label>
+                    <label className="form-label" style={{ color: 'var(--gold-hover)', fontWeight: 700 }}>
+                      ★ Requested Reimbursement
+                    </label>
                     <input
                       type="number"
                       step="0.01"
+                      min="0"
+                      className="form-input"
+                      style={{ fontWeight: 700, borderColor: 'var(--gold-primary)', background: '#fff' }}
+                      value={editForm.requestedAmount}
+                      onChange={(e) => setEditForm({ ...editForm, requestedAmount: e.target.value })}
+                      placeholder="0.00"
+                      required
+                    />
+                    <span style={{ fontSize: '0.7rem', color: 'var(--gold-hover)', display: 'block', marginTop: '3px' }}>
+                      Amount you are claiming (can be partial)
+                    </span>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Tax / GST Amount</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
                       className="form-input"
                       value={editForm.taxAmount}
                       onChange={(e) => setEditForm({ ...editForm, taxAmount: e.target.value })}
+                      placeholder="0.00"
                     />
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginTop: '3px' }}>
+                      Applicable GST or tax
+                    </span>
                   </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" style={{ fontWeight: 600 }}>
+                    Description &amp; Request Business Purpose <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <textarea
+                    className="form-input"
+                    rows="3"
+                    value={editForm.description}
+                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                    placeholder="Provide a clear explanation for this reimbursement request (e.g., Client lunch meeting with Acme Corp team to review deployment roadmap; 3 participants attended)."
+                    style={{ resize: 'vertical' }}
+                  />
+                  <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)', marginTop: '2px', display: 'block' }}>
+                    Explaining your request helps your manager review and approve your voucher quickly without requesting corrections.
+                  </span>
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '6px' }}>
@@ -731,11 +916,12 @@ export default function ReceiptView({
                     Cancel
                   </button>
                   <button type="submit" className="btn btn-dark" disabled={saveLoading}>
-                    {saveLoading ? 'Saving...' : '💾 Save Confirmed Values'}
+                    {saveLoading ? 'Saving...' : '💾 Save Confirmed Details & Claim'}
                   </button>
                 </div>
               </form>
             )}
+
 
             {/* Policy & Data Validation Section */}
             <div className="policy-checklist-card">
