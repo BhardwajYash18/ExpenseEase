@@ -556,6 +556,12 @@ button, input, select, textarea {
   transform: translateY(-1px);
 }
 
+.stat-card.active-metric-card {
+  border-color: var(--gold-primary);
+  background: var(--gold-bg-subtle);
+  box-shadow: 0 0 0 2px rgba(229, 169, 59, 0.25);
+}
+
 .stat-header {
   display: flex;
   align-items: center;

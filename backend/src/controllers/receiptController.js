@@ -40,15 +40,18 @@ async function upload(req, res, next) {
  */
 async function list(req, res, next) {
   try {
-    const { limit, offset } = req.query;
-    const receipts = await receiptService.listReceipts(req.user.tenantId, {
+    const { limit, offset, page, pageSize, status } = req.query;
+    const result = await receiptService.listReceipts(req.user.tenantId, {
       limit,
       offset,
+      page,
+      pageSize,
+      status,
       userId: req.user.id,
       role: req.user.role,
     });
 
-    return res.status(200).json({ receipts });
+    return res.status(200).json(result);
   } catch (err) {
     next(err);
   }

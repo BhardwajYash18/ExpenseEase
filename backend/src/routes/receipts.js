@@ -103,7 +103,7 @@ router.get(
 router.delete(
   '/:id',
   authenticate,
-  requireRole('EMPLOYEE', 'MANAGER', 'FINANCE'),
+  requireRole('EMPLOYEE'),
   receiptController.remove
 );
 

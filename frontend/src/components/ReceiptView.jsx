@@ -52,6 +52,45 @@ export default function ReceiptView({
   const [showRawOcr, setShowRawOcr] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
 
+  // Authenticated Image File Preview States
+  const [imageObjectUrl, setImageObjectUrl] = useState(null);
+  const [imageLoading, setImageLoading] = useState(true);
+  const [imageLoadError, setImageLoadError] = useState(false);
+
+  // Load authenticated receipt image file
+  useEffect(() => {
+    let isMounted = true;
+    if (!receipt?.id || !authToken) return;
+
+    setImageLoading(true);
+    setImageLoadError(false);
+
+    fetch(`/api/receipts/${receipt.id}/file`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to load image');
+        return res.blob();
+      })
+      .then((blob) => {
+        if (isMounted) {
+          const url = URL.createObjectURL(blob);
+          setImageObjectUrl(url);
+          setImageLoading(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setImageLoadError(true);
+          setImageLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [receipt?.id, authToken]);
+
   async function handleDeleteReceipt() {
     if (!receipt?.id || !authToken) return;
     setDeleteLoading(true);
@@ -326,6 +365,25 @@ export default function ReceiptView({
     setActionLoading(true);
     setWorkflowError(null);
 
+    // If submitting, automatically execute policy validation if not already completed
+    if (actionType === 'SUBMIT' && !validation) {
+      try {
+        const valRes = await fetch(`/api/receipts/${receipt.id}/validation`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        const valData = await valRes.json();
+        if (valRes.ok && valData.validation) {
+          setValidation(valData.validation);
+        }
+      } catch (_) {
+        // Continue to submission attempt which will enforce business rule
+      }
+    }
+
     let endpoint = '';
     const body = {};
 
@@ -333,6 +391,9 @@ export default function ReceiptView({
       endpoint = `/api/receipts/${receipt.id}/workflow/submit`;
     } else if (actionType === 'APPROVE') {
       endpoint = `/api/receipts/${receipt.id}/workflow/approve`;
+      if (reason && reason.trim()) {
+        body.comment = reason.trim();
+      }
     } else if (actionType === 'REJECT') {
       endpoint = `/api/receipts/${receipt.id}/workflow/reject`;
       body.reason = reason;
@@ -366,11 +427,19 @@ export default function ReceiptView({
     }
   }
 
-  const isOcrCompleted = receipt.ocrStatus === 'COMPLETED';
+  const isOcrCompleted = receipt.ocrStatus === 'COMPLETED' || receipt.ocr_status === 'COMPLETED';
   const effective = extraction?.effectiveValues || {};
-  const isSubmitter = currentUser && (receipt.uploaded_by === currentUser.id || receipt.uploadedBy === currentUser.id);
+  const isEmployee = currentUser?.role === 'EMPLOYEE';
   const isManager = currentUser?.role === 'MANAGER';
+  const isFinance = currentUser?.role === 'FINANCE';
+  const isSubmitter = currentUser && (receipt.uploaded_by === currentUser.id || receipt.uploadedBy === currentUser.id);
   const currentState = workflowData?.currentState || 'DRAFT';
+  const canEditDetails = isEmployee && (currentState === 'DRAFT' || currentState === 'CORRECTION_REQUESTED');
+
+  const latestCorrectionAction = workflowData?.history?.slice().reverse().find(
+    (a) => a.action === 'REQUEST_CORRECTION' && a.reason
+  );
+  const latestCorrectionReason = latestCorrectionAction?.reason || null;
 
   const getStatusClass = (st) => {
     switch (st) {
@@ -520,15 +589,43 @@ export default function ReceiptView({
               </div>
             )}
             <div className="scan-preview-box">
-              <img
-                src={`/api/receipts/${receipt.id}/file`}
-                alt="Receipt Scan"
-                className="scan-image"
-                style={{ transform: `scale(${zoomLevel})` }}
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                }}
-              />
+              {imageLoading && (
+                <div style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8' }}>
+                  <div style={{ fontSize: '1.75rem', marginBottom: '8px' }}>🔄</div>
+                  <div>Loading high-resolution voucher scan...</div>
+                </div>
+              )}
+              {imageLoadError && !imageLoading && (
+                <div style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📷</div>
+                  <div style={{ fontSize: '0.875rem' }}>Receipt preview could not be displayed directly.</div>
+                  <a
+                    href={`/api/receipts/${receipt.id}/file?token=${encodeURIComponent(authToken)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-outline btn-sm"
+                    style={{ marginTop: '12px', display: 'inline-block' }}
+                  >
+                    Open Image in New Tab ↗
+                  </a>
+                </div>
+              )}
+              {!imageLoadError && (
+                <img
+                  src={imageObjectUrl || `/api/receipts/${receipt.id}/file?token=${encodeURIComponent(authToken)}`}
+                  alt="Receipt Scan"
+                  className="scan-image"
+                  style={{
+                    transform: `scale(${zoomLevel})`,
+                    display: imageLoading ? 'none' : 'block',
+                  }}
+                  onLoad={() => setImageLoading(false)}
+                  onError={() => {
+                    setImageLoadError(true);
+                    setImageLoading(false);
+                  }}
+                />
+              )}
               <div className="scan-controls">
                 <button
                   type="button"
@@ -982,6 +1079,23 @@ export default function ReceiptView({
                 </div>
               )}
 
+              {/* Correction Banner if returned by Manager */}
+              {currentState === 'CORRECTION_REQUESTED' && (
+                <div className="alert alert-warning" style={{ borderLeft: '4px solid #f59e0b', background: '#fffbeb', padding: '14px 16px', borderRadius: 'var(--radius-md)' }}>
+                  <div style={{ fontWeight: 700, color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>↺ Correction Requested by Manager</span>
+                  </div>
+                  <div style={{ fontSize: '0.875rem', color: '#78350f', marginTop: '6px', fontStyle: 'italic', background: '#fef3c7', padding: '8px 12px', borderRadius: '4px' }}>
+                    {latestCorrectionReason ? `"${latestCorrectionReason}"` : 'Please review and adjust your claim details or requested reimbursement amount before resubmission.'}
+                  </div>
+                  {isEmployee && (
+                    <div style={{ fontSize: '0.75rem', color: '#92400e', marginTop: '8px' }}>
+                      Click "✏️ Edit Details &amp; Claim" above to make changes, then click "🚀 Resubmit for Approval" below.
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Submitter Actions (EMPLOYEE) */}
               {isSubmitter && (currentState === 'DRAFT' || currentState === 'CORRECTION_REQUESTED') && (
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
@@ -992,30 +1106,66 @@ export default function ReceiptView({
                     onClick={() => handleWorkflowAction('SUBMIT')}
                     disabled={actionLoading || !extraction}
                   >
-                    {actionLoading ? 'Submitting...' : '🚀 Submit for Approval'}
+                    {actionLoading
+                      ? 'Submitting...'
+                      : currentState === 'CORRECTION_REQUESTED'
+                      ? '🚀 Resubmit for Approval'
+                      : '🚀 Submit for Approval'}
                   </button>
+                </div>
+              )}
+
+              {/* Informational State Banner when in PENDING_APPROVAL for Employee */}
+              {isEmployee && currentState === 'PENDING_APPROVAL' && (
+                <div className="alert alert-info" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '1.25rem' }}>⏳</span>
+                  <div>
+                    <strong>Submitted to Manager:</strong> This claim is currently queued for Manager review and approval.
+                  </div>
+                </div>
+              )}
+
+              {/* Informational State Banner when APPROVED */}
+              {currentState === 'APPROVED' && (
+                <div className="alert alert-success" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '1.25rem' }}>✅</span>
+                  <div>
+                    <strong>Claim Approved:</strong> This expense has been approved by the Manager and is queued for Finance Batch processing.
+                  </div>
+                </div>
+              )}
+
+              {/* Informational State Banner when REJECTED */}
+              {currentState === 'REJECTED' && (
+                <div className="alert alert-danger" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '1.25rem' }}>❌</span>
+                  <div>
+                    <strong>Claim Rejected:</strong> This expense claim was rejected during review. Check the audit trail below for details.
+                  </div>
                 </div>
               )}
 
               {/* Manager Actions */}
               {isManager && currentState === 'PENDING_APPROVAL' && (
-                <div>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                    Manager Sign-Off Decisions
+                <div style={{ background: '#f8fafc', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: '0.8125rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-primary)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>🛡️</span>
+                    <span>Manager Sign-Off Decisions</span>
                   </div>
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                     <button
                       type="button"
                       className="btn btn-gold"
-                      style={{ flex: 1 }}
-                      onClick={() => handleWorkflowAction('APPROVE')}
+                      style={{ flex: 1, minWidth: '160px' }}
+                      onClick={() => setReasonModal({ type: 'APPROVE', reason: '' })}
                       disabled={actionLoading}
                     >
-                      {actionLoading ? 'Approving...' : '✓ Approve Expense'}
+                      ✓ Approve Claim
                     </button>
                     <button
                       type="button"
                       className="btn btn-warning"
+                      style={{ minWidth: '180px' }}
                       onClick={() => setReasonModal({ type: 'REQUEST_CORRECTION', reason: '' })}
                       disabled={actionLoading}
                     >
@@ -1024,12 +1174,20 @@ export default function ReceiptView({
                     <button
                       type="button"
                       className="btn btn-danger"
+                      style={{ minWidth: '120px' }}
                       onClick={() => setReasonModal({ type: 'REJECT', reason: '' })}
                       disabled={actionLoading}
                     >
                       ✕ Reject
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* Notice for Manager when voucher is still in DRAFT */}
+              {isManager && currentState === 'DRAFT' && (
+                <div className="alert alert-info">
+                  ℹ️ This receipt voucher is currently in <strong>DRAFT</strong>. The employee has not submitted it for review yet. Manager approval decisions become available once submitted.
                 </div>
               )}
 
@@ -1078,37 +1236,62 @@ export default function ReceiptView({
         </div>
       )}
 
-      {/* Reason Modal for Rejection / Correction */}
+      {/* Reason Modal for Rejection / Correction / Approval */}
       {reasonModal && (
         <div className="modal-overlay">
           <div className="modal-dialog">
             <div className="modal-header">
               <h4 className="modal-title">
-                {reasonModal.type === 'REJECT' ? 'Reject Expense Claim' : 'Request Expense Correction'}
+                {reasonModal.type === 'APPROVE'
+                  ? 'Approve Expense Claim'
+                  : reasonModal.type === 'REJECT'
+                  ? 'Reject Expense Claim'
+                  : 'Request Expense Correction & Resubmission'}
               </h4>
               <button type="button" className="btn btn-outline btn-sm" onClick={() => setReasonModal(null)}>✕</button>
             </div>
             <div className="modal-body">
               <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-                Please specify a mandatory reason for this decision. This will be preserved in the audit trail.
+                {reasonModal.type === 'APPROVE'
+                  ? 'You may optionally add an approval note or compliance comment for the employee and finance audit trail.'
+                  : reasonModal.type === 'REJECT'
+                  ? 'Please specify a mandatory reason explaining why this expense claim is being rejected.'
+                  : 'Please specify what corrections or explanations the employee needs to provide before resubmission.'}
               </p>
               <textarea
                 className="form-textarea"
-                placeholder="Enter explanation..."
+                placeholder={
+                  reasonModal.type === 'APPROVE'
+                    ? 'Optional approval comment (e.g. Approved within quarterly travel budget)...'
+                    : 'Enter explanation message (mandatory)...'
+                }
                 value={reasonModal.reason}
                 onChange={(e) => setReasonModal({ ...reasonModal, reason: e.target.value })}
-                required
+                rows={3}
+                required={reasonModal.type !== 'APPROVE'}
               />
             </div>
             <div className="modal-footer">
               <button type="button" className="btn btn-outline" onClick={() => setReasonModal(null)}>Cancel</button>
               <button
                 type="button"
-                className={`btn ${reasonModal.type === 'REJECT' ? 'btn-danger' : 'btn-warning'}`}
-                disabled={!reasonModal.reason.trim() || actionLoading}
+                className={`btn ${
+                  reasonModal.type === 'APPROVE'
+                    ? 'btn-gold'
+                    : reasonModal.type === 'REJECT'
+                    ? 'btn-danger'
+                    : 'btn-warning'
+                }`}
+                disabled={actionLoading || (reasonModal.type !== 'APPROVE' && !reasonModal.reason.trim())}
                 onClick={() => handleWorkflowAction(reasonModal.type, reasonModal.reason)}
               >
-                {actionLoading ? 'Recording...' : 'Confirm Decision'}
+                {actionLoading
+                  ? 'Recording...'
+                  : reasonModal.type === 'APPROVE'
+                  ? 'Confirm Approval'
+                  : reasonModal.type === 'REJECT'
+                  ? 'Confirm Rejection'
+                  : 'Send Correction Request'}
               </button>
             </div>
           </div>

@@ -256,46 +256,134 @@ async function getReceiptFile(tenantId, receiptId, userFilter = null) {
 }
 
 /**
- * List receipts for the authenticated tenant.
+ * List receipts for the authenticated tenant with workflow state, employee metadata, and pagination.
  *
  * @param {string} tenantId - Tenant UUID from JWT
- * @param {{ limit?: number, offset?: number, userId?: string, role?: string }} options
- * @returns {Promise<object[]>} Array of receipt metadata
+ * @param {{ limit?: number, offset?: number, page?: number, pageSize?: number, status?: string, userId?: string, role?: string }} options
+ * @returns {Promise<{ receipts: object[], total: number, page: number, pageSize: number, totalPages: number }>}
  */
 async function listReceipts(tenantId, options = {}) {
-  const limit = Math.min(Math.max(parseInt(options.limit) || 20, 1), 100);
-  const offset = Math.max(parseInt(options.offset) || 0, 0);
+  const page = Math.max(parseInt(options.page) || 1, 1);
+  const pageSize = Math.min(Math.max(parseInt(options.pageSize || options.limit) || 20, 1), 100);
+  const offset = options.offset !== undefined && options.offset !== null
+    ? Math.max(parseInt(options.offset) || 0, 0)
+    : (page - 1) * pageSize;
+  const limit = pageSize;
 
   return withTenantContext(tenantId, async (client) => {
     let query = `
-      SELECT id, uploaded_by, original_filename, mime_type,
-             file_size_bytes, upload_status, ocr_status,
-             created_at, updated_at
-      FROM receipts
+      SELECT r.id, r.uploaded_by, r.original_filename, r.mime_type,
+             r.file_size_bytes, r.upload_status, r.ocr_status,
+             r.created_at, r.updated_at,
+             COALESCE(w.current_state, 'DRAFT') AS workflow_state,
+             w.id AS workflow_id,
+             w.submitted_at,
+             u.email AS employee_email,
+             TRIM(CONCAT(u.first_name, ' ', u.last_name)) AS employee_name,
+             re.extraction_status,
+             re.ai_confidence_score,
+             re.ai_merchant_name,
+             re.confirmed_merchant_name,
+             re.ai_total_amount,
+             re.confirmed_total_amount,
+             re.ai_currency,
+             re.confirmed_currency,
+             re.ai_suggested_category,
+             re.confirmed_category,
+             re.ai_receipt_date,
+             re.confirmed_receipt_date,
+             re.requested_amount,
+             re.reimbursement_description,
+             rv.validation_status,
+             rv.duplicate_status,
+             rv.duplicate_score,
+             COUNT(*) OVER() AS full_count
+      FROM receipts r
+      LEFT JOIN expense_workflows w ON w.receipt_id = r.id
+      LEFT JOIN users u ON u.id = r.uploaded_by
+      LEFT JOIN receipt_extractions re ON re.receipt_id = r.id
+      LEFT JOIN receipt_validation_results rv ON rv.receipt_id = r.id
     `;
     const params = [];
+    const conditions = [];
 
+    // Filter by role & ownership
     if (options.role === 'EMPLOYEE' && options.userId) {
-      query += ` WHERE uploaded_by = $1`;
       params.push(options.userId);
+      conditions.push(`r.uploaded_by = $${params.length}`);
     }
 
-    query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    if (options.status) {
+      params.push(options.status);
+      if (options.status === 'DRAFT') {
+        conditions.push(`(w.current_state = $${params.length} OR w.current_state IS NULL)`);
+      } else {
+        conditions.push(`w.current_state = $${params.length}`);
+      }
+    }
+
+    if (conditions.length > 0) {
+      query += ` WHERE ` + conditions.join(' AND ');
+    }
+
     params.push(limit, offset);
+    query += ` ORDER BY r.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
 
     const { rows } = await client.query(query, params);
+    const total = rows.length > 0 ? parseInt(rows[0].full_count, 10) : 0;
+    const totalPages = Math.ceil(total / pageSize) || 1;
 
-    return rows.map((r) => ({
-      id: r.id,
-      uploadedBy: r.uploaded_by,
-      originalFilename: r.original_filename,
-      mimeType: r.mime_type,
-      fileSizeBytes: r.file_size_bytes,
-      uploadStatus: r.upload_status,
-      ocrStatus: r.ocr_status,
-      createdAt: r.created_at,
-      updatedAt: r.updated_at,
-    }));
+    const receipts = rows.map((r) => {
+      const totalAmount = r.confirmed_total_amount !== null && r.confirmed_total_amount !== undefined
+        ? parseFloat(r.confirmed_total_amount)
+        : (r.ai_total_amount !== null && r.ai_total_amount !== undefined ? parseFloat(r.ai_total_amount) : null);
+
+      const requestedAmount = r.requested_amount !== null && r.requested_amount !== undefined
+        ? parseFloat(r.requested_amount)
+        : totalAmount;
+
+      const merchantName = r.confirmed_merchant_name || r.ai_merchant_name || null;
+      const currency = r.confirmed_currency || r.ai_currency || 'INR';
+      const category = r.confirmed_category || r.ai_suggested_category || 'Other';
+      const receiptDate = r.confirmed_receipt_date || r.ai_receipt_date || null;
+
+      return {
+        id: r.id,
+        uploadedBy: r.uploaded_by,
+        employeeName: r.employee_name || 'Employee',
+        employeeEmail: r.employee_email || '',
+        originalFilename: r.original_filename,
+        mimeType: r.mime_type,
+        fileSizeBytes: r.file_size_bytes,
+        uploadStatus: r.upload_status,
+        ocrStatus: r.ocr_status,
+        workflowState: r.workflow_state,
+        workflow_state: r.workflow_state,
+        workflowId: r.workflow_id,
+        submittedAt: r.submitted_at,
+        merchantName,
+        totalAmount,
+        requestedAmount,
+        currency,
+        category,
+        receiptDate,
+        reimbursementDescription: r.reimbursement_description || '',
+        validationStatus: r.validation_status || null,
+        duplicateStatus: r.duplicate_status || null,
+        duplicateScore: r.duplicate_score !== null && r.duplicate_score !== undefined ? parseFloat(r.duplicate_score) : null,
+        confidenceScore: r.ai_confidence_score !== null && r.ai_confidence_score !== undefined ? parseFloat(r.ai_confidence_score) : null,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      };
+    });
+
+    return {
+      receipts,
+      total,
+      page,
+      pageSize,
+      totalPages,
+    };
   });
 }
 

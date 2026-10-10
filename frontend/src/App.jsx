@@ -192,13 +192,36 @@ function App() {
   const pendingCount = receiptsList.filter((r) => (r.workflow_state || r.workflowState) === 'PENDING_APPROVAL').length;
   const approvedCount = receiptsList.filter((r) => (r.workflow_state || r.workflowState) === 'APPROVED').length;
 
-  const filteredReceipts = receiptsList.filter((r) => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    const name = (r.original_filename || r.originalFilename || '').toLowerCase();
-    const id = (r.id || '').toLowerCase();
-    return name.includes(query) || id.includes(query);
-  });
+  // Ledger table pagination state
+  const [ledgerPage, setLedgerPage] = useState(1);
+  const [ledgerPageSize, setLedgerPageSize] = useState(10);
+
+  // Enforce Role-Based Access Control on active view
+  useEffect(() => {
+    if (!currentUser) return;
+    if (currentUser.role === 'EMPLOYEE') {
+      if (activeNav === 'approvals' || activeNav === 'finance') {
+        setActiveNav('dashboard');
+      }
+    } else if (currentUser.role === 'MANAGER') {
+      if (activeNav === 'upload' || activeNav === 'finance' || activeNav === 'receipt-detail') {
+        setActiveNav('approvals');
+      }
+    } else if (currentUser.role === 'FINANCE') {
+      if (activeNav === 'upload' || activeNav === 'approvals' || activeNav === 'receipt-detail') {
+        setActiveNav('finance');
+      }
+    }
+  }, [currentUser?.role, activeNav]);
+
+  const filteredReceipts = Array.isArray(receiptsList) ? receiptsList : [];
+  const totalLedger = filteredReceipts.length;
+  const totalLedgerPages = Math.ceil(totalLedger / ledgerPageSize) || 1;
+  const safeLedgerPage = Math.min(Math.max(ledgerPage, 1), totalLedgerPages);
+  const paginatedLedgerReceipts = filteredReceipts.slice(
+    (safeLedgerPage - 1) * ledgerPageSize,
+    safeLedgerPage * ledgerPageSize
+  );
 
   return (
     <div className="app-shell">
@@ -257,39 +280,42 @@ function App() {
                     </button>
                   </li>
 
+                  {/* EMPLOYEE ONLY */}
                   {currentUser.role === 'EMPLOYEE' && (
-                    <li>
-                      <button
-                        type="button"
-                        className={`nav-item-btn ${activeNav === 'upload' ? 'active' : ''}`}
-                        title="Submit Expense"
-                        onClick={() => {
-                          setActiveNav('upload');
-                          setMobileMenuOpen(false);
-                        }}
-                      >
-                        <span className="nav-item-icon">📸</span>
-                        {!sidebarCollapsed && <span>Submit Expense</span>}
-                      </button>
-                    </li>
+                    <>
+                      <li>
+                        <button
+                          type="button"
+                          className={`nav-item-btn ${activeNav === 'upload' ? 'active' : ''}`}
+                          title="Submit Expense"
+                          onClick={() => {
+                            setActiveNav('upload');
+                            setMobileMenuOpen(false);
+                          }}
+                        >
+                          <span className="nav-item-icon">📸</span>
+                          {!sidebarCollapsed && <span>Submit Expense</span>}
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          className={`nav-item-btn ${activeNav === 'receipt-detail' ? 'active' : ''}`}
+                          title="Receipt OCR & Inspect"
+                          onClick={() => {
+                            setActiveNav('receipt-detail');
+                            setMobileMenuOpen(false);
+                          }}
+                        >
+                          <span className="nav-item-icon">🧾</span>
+                          {!sidebarCollapsed && <span>Receipt OCR &amp; Inspect</span>}
+                        </button>
+                      </li>
+                    </>
                   )}
 
-                  <li>
-                    <button
-                      type="button"
-                      className={`nav-item-btn ${activeNav === 'receipt-detail' ? 'active' : ''}`}
-                      title="Receipt OCR & Inspect"
-                      onClick={() => {
-                        setActiveNav('receipt-detail');
-                        setMobileMenuOpen(false);
-                      }}
-                    >
-                      <span className="nav-item-icon">🧾</span>
-                      {!sidebarCollapsed && <span>Receipt OCR &amp; Inspect</span>}
-                    </button>
-                  </li>
-
-                  {(currentUser.role === 'MANAGER' || currentUser.role === 'FINANCE') && (
+                  {/* MANAGER ONLY */}
+                  {currentUser.role === 'MANAGER' && (
                     <li>
                       <button
                         type="button"
@@ -307,6 +333,7 @@ function App() {
                     </li>
                   )}
 
+                  {/* FINANCE ONLY */}
                   {currentUser.role === 'FINANCE' && (
                     <li>
                       <button
@@ -601,52 +628,121 @@ function App() {
                     </div>
                   </div>
 
-                  {/* Ingestion Action Cards (Stitch Screen 1 Middle Row) */}
+                  {/* Role-Specific Action Cards */}
                   <div className="action-cards-grid">
-                    <div className="action-card" onClick={() => setActiveNav('upload')}>
-                      <div className="action-card-icon">📤</div>
-                      <div>
-                        <h4 className="action-card-title">Upload Receipt Image</h4>
-                        <p className="action-card-desc">
-                          Select JPEG, PNG, or WebP receipts. Automatic OCR and AI field extraction runs upon upload.
-                        </p>
-                      </div>
-                      <button type="button" className="btn btn-gold btn-sm" style={{ marginTop: 'auto' }}>
-                        Browse &amp; Upload
-                      </button>
-                    </div>
+                    {currentUser.role === 'EMPLOYEE' && (
+                      <>
+                        <div className="action-card" onClick={() => setActiveNav('upload')}>
+                          <div className="action-card-icon">📤</div>
+                          <div>
+                            <h4 className="action-card-title">Upload Receipt Image</h4>
+                            <p className="action-card-desc">
+                              Select JPEG, PNG, or WebP receipts. Automatic OCR and AI field extraction runs upon upload.
+                            </p>
+                          </div>
+                          <button type="button" className="btn btn-gold btn-sm" style={{ marginTop: 'auto' }}>
+                            Browse &amp; Upload
+                          </button>
+                        </div>
 
-                    <div className="action-card" onClick={() => setActiveNav('upload')}>
-                      <div className="action-card-icon">📷</div>
-                      <div>
-                        <h4 className="action-card-title">Snap with Camera</h4>
-                        <p className="action-card-desc">
-                          Trigger mobile or web camera capture with auto-edge alignment and OCR text extraction.
-                        </p>
-                      </div>
-                      <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 'auto' }}>
-                        Open Camera
-                      </button>
-                    </div>
+                        <div className="action-card" onClick={() => setActiveNav('upload')}>
+                          <div className="action-card-icon">📷</div>
+                          <div>
+                            <h4 className="action-card-title">Snap with Camera</h4>
+                            <p className="action-card-desc">
+                              Trigger mobile or web camera capture with auto-edge alignment and OCR text extraction.
+                            </p>
+                          </div>
+                          <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 'auto' }}>
+                            Open Camera
+                          </button>
+                        </div>
 
-                    <div className="action-card" onClick={() => setActiveNav('receipt-detail')}>
-                      <div className="action-card-icon">🔍</div>
-                      <div>
-                        <h4 className="action-card-title">Check Submission Status</h4>
-                        <p className="action-card-desc">
-                          Inspect AI extraction confidence, deterministic policy validation results, and manager feedback.
-                        </p>
-                      </div>
-                      <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 'auto' }}>
-                        Track Claims
-                      </button>
-                    </div>
+                        <div className="action-card" onClick={() => setActiveNav('receipt-detail')}>
+                          <div className="action-card-icon">🔍</div>
+                          <div>
+                            <h4 className="action-card-title">Check Submission Status</h4>
+                            <p className="action-card-desc">
+                              Inspect AI extraction confidence, deterministic policy validation results, and manager feedback.
+                            </p>
+                          </div>
+                          <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 'auto' }}>
+                            Track Claims
+                          </button>
+                        </div>
+                      </>
+                    )}
+
+                    {currentUser.role === 'MANAGER' && (
+                      <>
+                        <div className="action-card" onClick={() => setActiveNav('approvals')}>
+                          <div className="action-card-icon">🛡️</div>
+                          <div>
+                            <h4 className="action-card-title">Manager Approvals Queue</h4>
+                            <p className="action-card-desc">
+                              Review pending claims ({pendingCount} awaiting review), verify policy compliance, and sign off decisions.
+                            </p>
+                          </div>
+                          <button type="button" className="btn btn-gold btn-sm" style={{ marginTop: 'auto' }}>
+                            Open Approvals Queue &rarr;
+                          </button>
+                        </div>
+
+                        <div className="action-card" onClick={() => setActiveNav('approvals')}>
+                          <div className="action-card-icon">📋</div>
+                          <div>
+                            <h4 className="action-card-title">Policy &amp; Audit Review</h4>
+                            <p className="action-card-desc">
+                              Inspect deterministic policy checks, duplicate similarity scores, and review workflow audit trails.
+                            </p>
+                          </div>
+                          <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 'auto' }}>
+                            Inspect Compliance
+                          </button>
+                        </div>
+                      </>
+                    )}
+
+                    {currentUser.role === 'FINANCE' && (
+                      <>
+                        <div className="action-card" onClick={() => setActiveNav('finance')}>
+                          <div className="action-card-icon">🏛️</div>
+                          <div>
+                            <h4 className="action-card-title">Finance Batches</h4>
+                            <p className="action-card-desc">
+                              Group manager-approved expenses into auditable Finance Batches for accounting review.
+                            </p>
+                          </div>
+                          <button type="button" className="btn btn-gold btn-sm" style={{ marginTop: 'auto' }}>
+                            Manage Batches &rarr;
+                          </button>
+                        </div>
+
+                        <div className="action-card" onClick={() => setActiveNav('finance')}>
+                          <div className="action-card-icon">⚖️</div>
+                          <div>
+                            <h4 className="action-card-title">Journal Entries &amp; Export</h4>
+                            <p className="action-card-desc">
+                              Generate balanced GL records, export accounting CSVs, and inspect QuickBooks/Xero payloads.
+                            </p>
+                          </div>
+                          <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 'auto' }}>
+                            Accounting Ledger
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   {/* Recent Submissions Ledger Table */}
                   <div className="table-card">
                     <div className="table-header-bar">
-                      <span className="table-title">Recent Submissions Ledger</span>
+                      <div>
+                        <span className="table-title">Recent Submissions Ledger</span>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                          {currentUser.role === 'EMPLOYEE' ? 'Your personal expense vouchers' : 'Tenant expense submissions pool'}
+                        </div>
+                      </div>
                       <button
                         type="button"
                         className="btn btn-outline btn-sm"
@@ -659,67 +755,146 @@ function App() {
 
                     {filteredReceipts.length === 0 ? (
                       <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                        No expense receipts found. Click <strong>"Submit Expense"</strong> to upload your first receipt.
+                        No expense receipts found. {currentUser.role === 'EMPLOYEE' ? 'Click "Submit Expense" to upload your first receipt.' : 'No receipts uploaded in this tenant yet.'}
                       </div>
                     ) : (
-                      <div className="data-table-wrapper">
-                        <table className="data-table">
-                          <thead>
-                            <tr>
-                              <th>Date</th>
-                              <th>Receipt / Voucher</th>
-                              <th>Format / Size</th>
-                              <th>OCR Status</th>
-                              <th>Workflow State</th>
-                              <th style={{ textAlign: 'right' }}>Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {filteredReceipts.map((r) => {
-                              const st = r.workflow_state || r.workflowState || 'DRAFT';
-                              return (
-                                <tr key={r.id}>
-                                  <td style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                                    {new Date(r.created_at || r.createdAt).toLocaleDateString()}
-                                  </td>
-                                  <td style={{ fontWeight: 600 }}>
-                                    {r.original_filename || r.originalFilename || 'Receipt Image'}
-                                  </td>
-                                  <td>
-                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                      {r.mime_type || r.mimeType || 'image'} &bull; {((r.file_size_bytes || r.fileSizeBytes || 0) / 1024).toFixed(1)} KB
-                                    </span>
-                                  </td>
-                                  <td>
-                                    <span className={`status-pill ${r.ocr_status === 'COMPLETED' ? 'policy-pass' : 'draft'}`}>
-                                      <span className="status-dot"></span>
-                                      <span>{r.ocr_status || r.ocrStatus}</span>
-                                    </span>
-                                  </td>
-                                  <td>
-                                    <span className={`status-pill ${st === 'APPROVED' ? 'approved' : st === 'PENDING_APPROVAL' ? 'pending' : st === 'REJECTED' ? 'rejected' : 'draft'}`}>
-                                      <span className="status-dot"></span>
-                                      <span>{st.replace('_', ' ')}</span>
-                                    </span>
-                                  </td>
-                                  <td style={{ textAlign: 'right' }}>
-                                    <button
-                                      type="button"
-                                      className="btn btn-outline btn-sm"
-                                      onClick={() => {
-                                        setLatestReceipt(r);
-                                        setActiveNav('receipt-detail');
-                                      }}
-                                    >
-                                      Inspect &rarr;
-                                    </button>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                      <>
+                        <div className="data-table-wrapper">
+                          <table className="data-table">
+                            <thead>
+                              <tr>
+                                <th>Date</th>
+                                <th>Receipt / Voucher</th>
+                                <th>Format / Size</th>
+                                <th>OCR Status</th>
+                                <th>Workflow State</th>
+                                <th style={{ textAlign: 'right' }}>Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {paginatedLedgerReceipts.map((r) => {
+                                const st = r.workflow_state || r.workflowState || 'DRAFT';
+                                return (
+                                  <tr key={r.id}>
+                                    <td style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                      {new Date(r.created_at || r.createdAt).toLocaleDateString()}
+                                    </td>
+                                    <td style={{ fontWeight: 600 }}>
+                                      {r.merchantName || r.original_filename || r.originalFilename || 'Receipt Image'}
+                                    </td>
+                                    <td>
+                                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                        {r.mime_type || r.mimeType || 'image'} &bull; {((r.file_size_bytes || r.fileSizeBytes || 0) / 1024).toFixed(1)} KB
+                                      </span>
+                                    </td>
+                                    <td>
+                                      <span className={`status-pill ${r.ocr_status === 'COMPLETED' ? 'policy-pass' : 'draft'}`}>
+                                        <span className="status-dot"></span>
+                                        <span>{r.ocr_status || r.ocrStatus}</span>
+                                      </span>
+                                    </td>
+                                    <td>
+                                      <span className={`status-pill ${
+                                        st === 'APPROVED'
+                                          ? 'approved'
+                                          : st === 'PENDING_APPROVAL'
+                                          ? 'pending'
+                                          : st === 'CORRECTION_REQUESTED'
+                                          ? 'correction'
+                                          : st === 'REJECTED'
+                                          ? 'rejected'
+                                          : 'draft'
+                                      }`}>
+                                        <span className="status-dot"></span>
+                                        <span>{st.replace('_', ' ')}</span>
+                                      </span>
+                                    </td>
+                                    <td style={{ textAlign: 'right' }}>
+                                      <button
+                                        type="button"
+                                        className="btn btn-outline btn-sm"
+                                        onClick={() => {
+                                          setLatestReceipt(r);
+                                          if (currentUser.role === 'MANAGER') {
+                                            setActiveNav('approvals');
+                                          } else if (currentUser.role === 'FINANCE') {
+                                            setActiveNav('finance');
+                                          } else {
+                                            setActiveNav('receipt-detail');
+                                          }
+                                        }}
+                                      >
+                                        Inspect &rarr;
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Ledger Pagination Bar */}
+                        <div
+                          style={{
+                            padding: '12px 18px',
+                            borderTop: '1px solid var(--border-subtle)',
+                            background: '#f8fafc',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            fontSize: '0.75rem',
+                            color: 'var(--text-secondary)',
+                          }}
+                        >
+                          <span>
+                            Showing {(safeLedgerPage - 1) * ledgerPageSize + 1} to {Math.min(safeLedgerPage * ledgerPageSize, totalLedger)} of {totalLedger} entries
+                          </span>
+
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <select
+                              value={ledgerPageSize}
+                              onChange={(e) => {
+                                setLedgerPageSize(Number(e.target.value));
+                                setLedgerPage(1);
+                              }}
+                              style={{
+                                padding: '3px 8px',
+                                fontSize: '0.75rem',
+                                borderRadius: '4px',
+                                border: '1px solid var(--border-subtle)',
+                                background: '#ffffff',
+                              }}
+                            >
+                              <option value={5}>5 per page</option>
+                              <option value={10}>10 per page</option>
+                              <option value={25}>25 per page</option>
+                            </select>
+
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              style={{ padding: '3px 8px', fontSize: '0.75rem' }}
+                              disabled={safeLedgerPage <= 1}
+                              onClick={() => setLedgerPage((p) => Math.max(1, p - 1))}
+                            >
+                              ◀ Prev
+                            </button>
+                            <span>
+                              Page {safeLedgerPage} of {totalLedgerPages}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              style={{ padding: '3px 8px', fontSize: '0.75rem' }}
+                              disabled={safeLedgerPage >= totalLedgerPages}
+                              onClick={() => setLedgerPage((p) => Math.min(totalLedgerPages, p + 1))}
+                            >
+                              Next ▶
+                            </button>
+                          </div>
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>
