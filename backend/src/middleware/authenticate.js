@@ -18,13 +18,18 @@ const authService = require('../services/authService');
  * @param {import('express').NextFunction} next
  */
 function authenticate(req, res, next) {
+  let token = null;
   const authHeader = req.headers['authorization'];
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: { message: 'Authentication required' } });
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.slice(7); // Remove "Bearer " prefix
+  } else if (req.query && typeof req.query.token === 'string' && req.query.token.trim()) {
+    token = req.query.token.trim();
   }
 
-  const token = authHeader.slice(7); // Remove "Bearer " prefix
+  if (!token) {
+    return res.status(401).json({ error: { message: 'Authentication required' } });
+  }
 
   try {
     // verifyToken: validates signature, expiry, algorithm (HS256 only), and required claims

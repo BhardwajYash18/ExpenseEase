@@ -103,7 +103,7 @@ router.get(
 router.delete(
   '/:id',
   authenticate,
-  requireRole('EMPLOYEE', 'MANAGER', 'FINANCE'),
+  requireRole('EMPLOYEE'),
   receiptController.remove
 );
 
@@ -130,6 +130,18 @@ router.get(
   requireRole('EMPLOYEE', 'MANAGER', 'FINANCE'),
   receiptController.getOcr
 );
+
+/**
+ * POST /api/receipts/:id/retry-ocr
+ * Re-trigger OCR extraction on an existing stored receipt.
+ */
+router.post(
+  '/:id/retry-ocr',
+  authenticate,
+  requireRole('EMPLOYEE', 'MANAGER', 'FINANCE'),
+  receiptController.retryOcr
+);
+
 
 /**
  * POST /api/receipts/:id/extraction

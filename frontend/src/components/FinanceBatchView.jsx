@@ -31,6 +31,12 @@ function FinanceBatchView({ authToken, currentUser, onSelectBatch }) {
   const [batchJournalEntry, setBatchJournalEntry] = useState(null);
   const [generatingJournal, setGeneratingJournal] = useState(false);
 
+  // Pagination states
+  const [batchPage, setBatchPage] = useState(1);
+  const [batchPageSize, setBatchPageSize] = useState(5);
+  const [eligiblePage, setEligiblePage] = useState(1);
+  const [eligiblePageSize, setEligiblePageSize] = useState(10);
+
   // Fetch batches list
   async function fetchBatches() {
     if (!authToken) return;
@@ -273,6 +279,24 @@ function FinanceBatchView({ authToken, currentUser, onSelectBatch }) {
     .filter((e) => selectedReceiptIds.has(e.receiptId))
     .reduce((sum, e) => sum + (typeof e.amount === 'number' ? Math.round(e.amount * 100) : 0), 0) / 100;
 
+  // Batches pagination
+  const totalBatches = batches.length;
+  const totalBatchPages = Math.ceil(totalBatches / batchPageSize) || 1;
+  const safeBatchPage = Math.min(Math.max(batchPage, 1), totalBatchPages);
+  const paginatedBatches = batches.slice(
+    (safeBatchPage - 1) * batchPageSize,
+    safeBatchPage * batchPageSize
+  );
+
+  // Eligible expenses pagination
+  const totalEligible = eligibleExpenses.length;
+  const totalEligiblePages = Math.ceil(totalEligible / eligiblePageSize) || 1;
+  const safeEligiblePage = Math.min(Math.max(eligiblePage, 1), totalEligiblePages);
+  const paginatedEligible = eligibleExpenses.slice(
+    (safeEligiblePage - 1) * eligiblePageSize,
+    safeEligiblePage * eligiblePageSize
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {/* Top Controls Header */}
@@ -338,47 +362,84 @@ function FinanceBatchView({ authToken, currentUser, onSelectBatch }) {
               No finance batches created yet. Click <strong>"+ Create Batch"</strong> to group approved expenses.
             </div>
           ) : (
-            <div className="data-table-wrapper">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Batch ID</th>
-                    <th>Status</th>
-                    <th>Expenses</th>
-                    <th>Total Amount</th>
-                    <th>Created By</th>
-                    <th>Reviewer</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {batches.map((b) => (
-                    <tr key={b.id}>
-                      <td style={{ fontWeight: 600, fontFamily: 'monospace' }}>{b.id.slice(0, 13)}...</td>
-                      <td>
-                        <span className={`status-pill ${b.status === 'REVIEWED' ? 'approved' : 'pending'}`}>
-                          <span className="status-dot"></span>
-                          <span>{b.status}</span>
-                        </span>
-                      </td>
-                      <td>{b.expenseCount} items</td>
-                      <td className="table-amount">${b.totalAmount.toFixed(2)}</td>
-                      <td>{b.createdBy.name}</td>
-                      <td>{b.reviewedBy ? b.reviewedBy.name : '—'}</td>
-                      <td style={{ textAlign: 'right' }}>
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-sm"
-                          onClick={() => fetchBatchDetail(b.id)}
-                        >
-                          View Batch &rarr;
-                        </button>
-                      </td>
+            <>
+              <div className="data-table-wrapper">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Batch ID</th>
+                      <th>Status</th>
+                      <th>Expenses</th>
+                      <th>Total Amount</th>
+                      <th>Created By</th>
+                      <th>Reviewer</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {paginatedBatches.map((b) => (
+                      <tr key={b.id}>
+                        <td style={{ fontWeight: 600, fontFamily: 'monospace' }}>{b.id.slice(0, 13)}...</td>
+                        <td>
+                          <span className={`status-pill ${b.status === 'REVIEWED' ? 'approved' : 'pending'}`}>
+                            <span className="status-dot"></span>
+                            <span>{b.status}</span>
+                          </span>
+                        </td>
+                        <td>{b.expenseCount} items</td>
+                        <td className="table-amount">${b.totalAmount.toFixed(2)}</td>
+                        <td>{b.createdBy.name}</td>
+                        <td>{b.reviewedBy ? b.reviewedBy.name : '—'}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm"
+                            onClick={() => fetchBatchDetail(b.id)}
+                          >
+                            View Batch &rarr;
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {totalBatches > batchPageSize && (
+                <div
+                  style={{
+                    padding: '10px 16px',
+                    borderTop: '1px solid var(--border-subtle)',
+                    background: '#f8fafc',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '0.75rem',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  <span>Page {safeBatchPage} of {totalBatchPages} ({totalBatches} batches)</span>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      disabled={safeBatchPage <= 1}
+                      onClick={() => setBatchPage((p) => Math.max(1, p - 1))}
+                    >
+                      ◀ Prev
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      disabled={safeBatchPage >= totalBatchPages}
+                      onClick={() => setBatchPage((p) => Math.min(totalBatchPages, p + 1))}
+                    >
+                      Next ▶
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -416,53 +477,92 @@ function FinanceBatchView({ authToken, currentUser, onSelectBatch }) {
               No approved expenses currently available for batching.
             </div>
           ) : (
-            <div className="data-table-wrapper" style={{ maxHeight: '340px', overflowY: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', marginBottom: '16px' }}>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: '40px', textAlign: 'center' }}></th>
-                    <th>Merchant</th>
-                    <th>Date</th>
-                    <th>Category</th>
-                    <th>Submitter</th>
-                    <th style={{ textAlign: 'right' }}>Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {eligibleExpenses.map((exp) => {
-                    const isChecked = selectedReceiptIds.has(exp.receiptId);
-                    return (
-                      <tr
-                        key={exp.receiptId}
-                        className={isChecked ? 'selected' : ''}
-                        onClick={() => {
-                          const next = new Set(selectedReceiptIds);
-                          if (isChecked) next.delete(exp.receiptId);
-                          else next.add(exp.receiptId);
-                          setSelectedReceiptIds(next);
-                        }}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        <td style={{ textAlign: 'center' }}>
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => {}}
-                          />
-                        </td>
-                        <td style={{ fontWeight: 600 }}>{exp.merchant}</td>
-                        <td>{exp.date || '—'}</td>
-                        <td><span className="status-pill draft">{exp.category}</span></td>
-                        <td>{exp.submitter.name}</td>
-                        <td className="table-amount" style={{ textAlign: 'right' }}>
-                          ${typeof exp.amount === 'number' ? exp.amount.toFixed(2) : '0.00'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <div className="data-table-wrapper" style={{ maxHeight: '340px', overflowY: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', marginBottom: '16px' }}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '40px', textAlign: 'center' }}></th>
+                      <th>Merchant</th>
+                      <th>Date</th>
+                      <th>Category</th>
+                      <th>Submitter</th>
+                      <th style={{ textAlign: 'right' }}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedEligible.map((exp) => {
+                      const isChecked = selectedReceiptIds.has(exp.receiptId);
+                      return (
+                        <tr
+                          key={exp.receiptId}
+                          className={isChecked ? 'selected' : ''}
+                          onClick={() => {
+                            const next = new Set(selectedReceiptIds);
+                            if (isChecked) next.delete(exp.receiptId);
+                            else next.add(exp.receiptId);
+                            setSelectedReceiptIds(next);
+                          }}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <td style={{ textAlign: 'center' }}>
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => {}}
+                            />
+                          </td>
+                          <td style={{ fontWeight: 600 }}>{exp.merchant}</td>
+                          <td>{exp.date || '—'}</td>
+                          <td><span className="status-pill draft">{exp.category}</span></td>
+                          <td>{exp.submitter.name}</td>
+                          <td className="table-amount" style={{ textAlign: 'right' }}>
+                            ${typeof exp.amount === 'number' ? exp.amount.toFixed(2) : '0.00'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {totalEligible > eligiblePageSize && (
+                <div
+                  style={{
+                    padding: '8px 14px',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-md)',
+                    background: '#f8fafc',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '0.75rem',
+                    color: 'var(--text-secondary)',
+                    marginBottom: '16px',
+                  }}
+                >
+                  <span>Page {safeEligiblePage} of {totalEligiblePages} ({totalEligible} eligible expenses)</span>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      disabled={safeEligiblePage <= 1}
+                      onClick={() => setEligiblePage((p) => Math.max(1, p - 1))}
+                    >
+                      ◀ Prev
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      disabled={safeEligiblePage >= totalEligiblePages}
+                      onClick={() => setEligiblePage((p) => Math.min(totalEligiblePages, p + 1))}
+                    >
+                      Next ▶
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           {/* Creation Summary Bar */}

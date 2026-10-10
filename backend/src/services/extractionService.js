@@ -34,6 +34,13 @@ function formatDateString(val) {
 function computeEffectiveValues(row) {
   const confirmedDate = formatDateString(row.confirmed_receipt_date);
   const aiDate = formatDateString(row.ai_receipt_date);
+  const total = row.confirmed_total_amount !== null && row.confirmed_total_amount !== undefined
+    ? Number(row.confirmed_total_amount)
+    : (row.ai_total_amount !== null ? Number(row.ai_total_amount) : null);
+
+  const reqAmount = row.requested_amount !== null && row.requested_amount !== undefined
+    ? Number(row.requested_amount)
+    : total;
 
   return {
     merchantName: row.confirmed_merchant_name !== null && row.confirmed_merchant_name !== undefined
@@ -42,9 +49,9 @@ function computeEffectiveValues(row) {
     receiptDate: confirmedDate !== null && confirmedDate !== undefined
       ? confirmedDate
       : aiDate,
-    totalAmount: row.confirmed_total_amount !== null && row.confirmed_total_amount !== undefined
-      ? Number(row.confirmed_total_amount)
-      : (row.ai_total_amount !== null ? Number(row.ai_total_amount) : null),
+    totalAmount: total,
+    requestedAmount: reqAmount,
+    reimbursementDescription: row.reimbursement_description || '',
     subtotalAmount: row.confirmed_subtotal_amount !== null && row.confirmed_subtotal_amount !== undefined
       ? Number(row.confirmed_subtotal_amount)
       : (row.ai_subtotal_amount !== null ? Number(row.ai_subtotal_amount) : null),
@@ -98,6 +105,8 @@ function formatExtractionResponse(row, lineItems = []) {
       merchantName: row.confirmed_merchant_name,
       receiptDate: formatDateString(row.confirmed_receipt_date),
       totalAmount: row.confirmed_total_amount !== null ? Number(row.confirmed_total_amount) : null,
+      requestedAmount: row.requested_amount !== null && row.requested_amount !== undefined ? Number(row.requested_amount) : null,
+      reimbursementDescription: row.reimbursement_description || null,
       subtotalAmount: row.confirmed_subtotal_amount !== null ? Number(row.confirmed_subtotal_amount) : null,
       taxAmount: row.confirmed_tax_amount !== null ? Number(row.confirmed_tax_amount) : null,
       currency: row.confirmed_currency,
@@ -109,6 +118,7 @@ function formatExtractionResponse(row, lineItems = []) {
 
     // Deterministic effective values
     effectiveValues: computeEffectiveValues(row),
+
 
     // Line items
     lineItems: lineItems.map((li) => ({
@@ -321,21 +331,15 @@ async function updateExtraction(tenantId, receiptId, user, confirmedData) {
       [receiptId]
     );
 
-    if (!existingRows[0]) {
-      const err = new Error('No extraction record found for this receipt. Run extraction first.');
-      err.status = 404;
-      throw err;
-    }
-
-    const extraction = existingRows[0];
+    const extraction = existingRows[0] || null;
 
     // 3. Validate confirmed data fields
-    let merchant = extraction.confirmed_merchant_name;
+    let merchant = extraction ? extraction.confirmed_merchant_name : null;
     if (confirmedData.merchantName !== undefined) {
       merchant = confirmedData.merchantName !== null ? String(confirmedData.merchantName).trim().slice(0, 255) || null : null;
     }
 
-    let receiptDate = extraction.confirmed_receipt_date;
+    let receiptDate = extraction ? extraction.confirmed_receipt_date : null;
     if (confirmedData.receiptDate !== undefined) {
       if (confirmedData.receiptDate === null || confirmedData.receiptDate === '') {
         receiptDate = null;
@@ -350,7 +354,7 @@ async function updateExtraction(tenantId, receiptId, user, confirmedData) {
       }
     }
 
-    let totalAmount = extraction.confirmed_total_amount;
+    let totalAmount = extraction ? extraction.confirmed_total_amount : null;
     if (confirmedData.totalAmount !== undefined) {
       if (confirmedData.totalAmount === null || confirmedData.totalAmount === '') {
         totalAmount = null;
@@ -365,7 +369,7 @@ async function updateExtraction(tenantId, receiptId, user, confirmedData) {
       }
     }
 
-    let subtotalAmount = extraction.confirmed_subtotal_amount;
+    let subtotalAmount = extraction ? extraction.confirmed_subtotal_amount : null;
     if (confirmedData.subtotalAmount !== undefined) {
       if (confirmedData.subtotalAmount === null || confirmedData.subtotalAmount === '') {
         subtotalAmount = null;
@@ -380,7 +384,7 @@ async function updateExtraction(tenantId, receiptId, user, confirmedData) {
       }
     }
 
-    let taxAmount = extraction.confirmed_tax_amount;
+    let taxAmount = extraction ? extraction.confirmed_tax_amount : null;
     if (confirmedData.taxAmount !== undefined) {
       if (confirmedData.taxAmount === null || confirmedData.taxAmount === '') {
         taxAmount = null;
@@ -395,20 +399,20 @@ async function updateExtraction(tenantId, receiptId, user, confirmedData) {
       }
     }
 
-    let currency = extraction.confirmed_currency;
+    let currency = extraction ? extraction.confirmed_currency : 'USD';
     if (confirmedData.currency !== undefined) {
-      currency = confirmedData.currency ? String(confirmedData.currency).trim().toUpperCase().slice(0, 3) : null;
+      currency = confirmedData.currency ? String(confirmedData.currency).trim().toUpperCase().slice(0, 3) : 'USD';
     }
 
-    let receiptNumber = extraction.confirmed_receipt_number;
+    let receiptNumber = extraction ? extraction.confirmed_receipt_number : null;
     if (confirmedData.receiptNumber !== undefined) {
       receiptNumber = confirmedData.receiptNumber !== null ? String(confirmedData.receiptNumber).trim().slice(0, 100) || null : null;
     }
 
-    let category = extraction.confirmed_category;
+    let category = extraction ? extraction.confirmed_category : 'Other';
     if (confirmedData.category !== undefined) {
       if (confirmedData.category === null || confirmedData.category === '') {
-        category = null;
+        category = 'Other';
       } else {
         const catStr = String(confirmedData.category).trim();
         if (!ALLOWED_CATEGORIES.has(catStr)) {
@@ -420,44 +424,114 @@ async function updateExtraction(tenantId, receiptId, user, confirmedData) {
       }
     }
 
-    // 4. Update the confirmed fields, recording who made the correction and when
-    const updateSql = `
-      UPDATE receipt_extractions SET
-        confirmed_merchant_name = $1,
-        confirmed_receipt_date = $2,
-        confirmed_total_amount = $3,
-        confirmed_subtotal_amount = $4,
-        confirmed_tax_amount = $5,
-        confirmed_currency = $6,
-        confirmed_receipt_number = $7,
-        confirmed_category = $8,
-        corrected_by = $9,
-        corrected_at = CURRENT_TIMESTAMP,
-        extraction_status = 'MANUALLY_CONFIRMED',
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = $10
-      RETURNING *
-    `;
+    let requestedAmount = extraction ? extraction.requested_amount : null;
+    if (confirmedData.requestedAmount !== undefined) {
+      if (confirmedData.requestedAmount === null || confirmedData.requestedAmount === '') {
+        requestedAmount = null;
+      } else {
+        const num = Number(confirmedData.requestedAmount);
+        if (isNaN(num) || num < 0) {
+          const err = new Error('requestedAmount must be a non-negative number');
+          err.status = 400;
+          throw err;
+        }
+        requestedAmount = Number(num.toFixed(2));
+      }
+    } else if (requestedAmount === null && totalAmount !== null) {
+      requestedAmount = totalAmount;
+    }
 
-    const { rows: updatedRows } = await client.query(updateSql, [
-      merchant,
-      receiptDate,
-      totalAmount,
-      subtotalAmount,
-      taxAmount,
-      currency,
-      receiptNumber,
-      category,
-      user.id,
-      extraction.id,
-    ]);
+    let reimbursementDescription = extraction ? extraction.reimbursement_description : null;
+    if (confirmedData.description !== undefined) {
+      reimbursementDescription = confirmedData.description !== null ? String(confirmedData.description).trim() || null : null;
+    } else if (confirmedData.reimbursementDescription !== undefined) {
+      reimbursementDescription = confirmedData.reimbursementDescription !== null ? String(confirmedData.reimbursementDescription).trim() || null : null;
+    }
 
+    // 4. Update or insert the extraction record
+    let updatedRows;
+    if (extraction) {
+      const updateSql = `
+        UPDATE receipt_extractions SET
+          confirmed_merchant_name = $1,
+          confirmed_receipt_date = $2,
+          confirmed_total_amount = $3,
+          confirmed_subtotal_amount = $4,
+          confirmed_tax_amount = $5,
+          confirmed_currency = $6,
+          confirmed_receipt_number = $7,
+          confirmed_category = $8,
+          requested_amount = $9,
+          reimbursement_description = $10,
+          corrected_by = $11,
+          corrected_at = CURRENT_TIMESTAMP,
+          extraction_status = 'MANUALLY_CONFIRMED',
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = $12
+        RETURNING *
+      `;
+      const res = await client.query(updateSql, [
+        merchant,
+        receiptDate,
+        totalAmount,
+        subtotalAmount,
+        taxAmount,
+        currency,
+        receiptNumber,
+        category,
+        requestedAmount,
+        reimbursementDescription,
+        user.id,
+        extraction.id,
+      ]);
+      updatedRows = res.rows;
+    } else {
+      const insertSql = `
+        INSERT INTO receipt_extractions (
+          receipt_id,
+          tenant_id,
+          extraction_status,
+          confirmed_merchant_name,
+          confirmed_receipt_date,
+          confirmed_total_amount,
+          confirmed_subtotal_amount,
+          confirmed_tax_amount,
+          confirmed_currency,
+          confirmed_receipt_number,
+          confirmed_category,
+          requested_amount,
+          reimbursement_description,
+          corrected_by,
+          corrected_at
+        ) VALUES ($1, $2, 'MANUALLY_CONFIRMED', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)
+        RETURNING *
+      `;
+      const res = await client.query(insertSql, [
+        receiptId,
+        tenantId,
+        merchant,
+        receiptDate,
+        totalAmount,
+        subtotalAmount,
+        taxAmount,
+        currency,
+        receiptNumber,
+        category,
+        requestedAmount,
+        reimbursementDescription,
+        user.id,
+      ]);
+      updatedRows = res.rows;
+    }
+
+    const extractionId = updatedRows[0].id;
     const { rows: lineItemRows } = await client.query(
       'SELECT * FROM receipt_line_items WHERE receipt_extraction_id = $1 ORDER BY line_number ASC',
-      [extraction.id]
+      [extractionId]
     );
 
     return formatExtractionResponse(updatedRows[0], lineItemRows);
+
   });
 }
 
