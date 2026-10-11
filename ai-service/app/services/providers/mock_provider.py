@@ -54,41 +54,97 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
 
         lines = [line.strip() for line in cleaned_text.splitlines() if line.strip()]
 
-        # 1. Merchant Extraction
+        # Boilerplate header terms that must NEVER be extracted as the merchant / expense name
+        header_noise_patterns = [
+            r'^(?:tax|retail|commercial|cash|proforma|vat|gst)?\s*(?:invoice|bill|memo|receipt|voucher|cashier|slip)\b',
+            r'^(?:original|duplicate|triplicate|customer|merchant|client|buyer|seller|transporter)\s*(?:copy|recipient)?\b',
+            r'^(?:bill|invoice|receipt)\s*(?:of\s*supply|no\.?|number|id|#)\b',
+            r'^(?:gstin|gst|vat|pan|tin|cin|stn|fssai|tan|reg|regn|pos|terminal|mid|tid)\b',
+            r'^(?:welcome(?:\s+to)?|thank\s*you(?:\s*for\s*(?:your\s*)?(?:visit|shopping|business))?|visit\s*again)\b',
+            r'^(?:date|time|table|order|token|counter|waiter|server|cashier|check|chk)\s*[:#\d]',
+            r'^(?:tel|phone|ph|mobile|fax|email|web|website|http|www)\b',
+            r'^(?:shop|flat|plot|floor|building|road|street|lane|ave|nagar|block|sector|city|state|pin|pincode|zip)\b',
+            r'^\d+$',
+            r'^[^\w\s]+$',
+        ]
+
+        known_brands = [
+            "starbucks", "mcdonald", "burger king", "kfc", "subway", "domino", "pizza hut",
+            "chaayos", "chai point", "cafe coffee day", "blue bottle", "costa coffee",
+            "uber", "ola", "lyft", "grab", "rapido", "blusmart",
+            "shell", "bp", "chevron", "exxon", "hp petrol", "indian oil", "bharat petroleum",
+            "walmart", "target", "costco", "d-mart", "reliance", "croma", "ikea", "decathlon",
+            "amazon", "flipkart", "swiggy", "zomato", "blinkit", "zepto", "instamart",
+            "airtel", "jio", "vodafone", "apple", "google", "microsoft", "aws", "github", "slack", "zoom",
+            "indigo", "air india", "vistara", "delta", "united", "american airlines", "emirates",
+            "marriott", "hilton", "hyatt", "radisson", "taj", "oberoi", "oyo", "airbnb",
+            "staples", "office depot", "officemax"
+        ]
+
+        # 1. Merchant / Expense Name Extraction (Primary purpose: clean vendor/business name)
         merchant_name: Optional[str] = None
         merchant_confidence = 0.0
 
-        # Check for explicit Merchant: label or section
-        for idx, line in enumerate(lines):
-            if re.match(r'^(?:Merchant|Store|Vendor)\b', line, re.I):
-                lbl_m = re.match(r'^(?:Merchant|Store|Vendor)\s*[:=]?\s*(.+)$', line, re.I)
-                if lbl_m and not re.search(r'\b(payment|method|date|gstin)\b', lbl_m.group(1), re.I):
-                    merchant_name = lbl_m.group(1).strip()[:255]
+        # Step 1a: Check if any of the top lines match known popular brands
+        for line in lines[:10]:
+            line_lower = line.lower()
+            for brand in known_brands:
+                if brand in line_lower:
+                    clean = re.sub(r'^(?:welcome\s+to\s+|thank\s+you\s+for\s+visiting\s+)', '', line, flags=re.I).strip()
+                    if len(clean) >= 3 and not any(re.search(pat, clean, re.I) for pat in header_noise_patterns):
+                        merchant_name = clean[:255]
+                    else:
+                        merchant_name = brand.title()
                     merchant_confidence = 0.95
                     break
-                # Search subsequent lines for merchant name
-                for offset in range(1, 4):
-                    if idx + offset < len(lines):
-                        cand = lines[idx + offset].strip()
-                        if not re.search(r'\b(payment|method|date|total|rate|qty|subtotal|upi|card|cash|gstin|receipt|tax|invoice|bill|expenses|simple)\b', cand, re.I) and len(cand) > 2:
+            if merchant_name:
+                break
+
+        # Step 1b: Check for explicit Merchant / Store / Vendor label
+        if not merchant_name:
+            for idx, line in enumerate(lines):
+                if re.match(r'^(?:Merchant|Store|Vendor|Billed\s*By|Seller)\b', line, re.I):
+                    lbl_m = re.match(r'^(?:Merchant|Store|Vendor|Billed\s*By|Seller)\s*[:=]?\s*(.+)$', line, re.I)
+                    if lbl_m and not re.search(r'\b(payment|method|date|gstin|tax|invoice|bill)\b', lbl_m.group(1), re.I):
+                        cand = lbl_m.group(1).strip()
+                        if len(cand) >= 2:
                             merchant_name = cand[:255]
                             merchant_confidence = 0.95
                             break
-                if merchant_name:
-                    break
+                    if idx + 1 < len(lines):
+                        cand = lines[idx + 1].strip()
+                        if len(cand) >= 2 and not any(re.search(pat, cand, re.I) for pat in header_noise_patterns):
+                            merchant_name = cand[:255]
+                            merchant_confidence = 0.90
+                            break
 
+        # Step 1c: Scan the top lines, rigorously filtering out invoice/tax/memo noise
         if not merchant_name:
-            for line in lines[:6]:
-                # Filter out platform name, dates, amounts, receipt words
-                if not re.search(r'\b(receipt|invoice|bill|tax|date|total|welcome|thank you|expenseease|expenses|simple)\b', line, re.I) and not re.search(r'^\d', line):
-                    merchant_name = line[:255]
+            for line in lines[:8]:
+                if any(re.search(pat, line, re.I) for pat in header_noise_patterns):
+                    continue
+                if re.search(r'\b\d{5,6}\b', line):  # pincode / zip code
+                    continue
+                if re.search(r'^\d', line):  # starts with digit
+                    continue
+                if len(re.findall(r'[a-zA-Z]', line)) < 3:
+                    continue
+                cand = re.sub(r'^(?:welcome\s+to\s+)', '', line, flags=re.I).strip()
+                if len(cand) >= 3 and not any(re.search(pat, cand, re.I) for pat in header_noise_patterns):
+                    merchant_name = cand[:255]
                     merchant_confidence = 0.85
                     break
 
+        # Step 1d: Fallback: best non-empty line
         if not merchant_name and lines:
-            merchant_name = lines[0][:255]
-            merchant_confidence = 0.50
-
+            for line in lines[:5]:
+                if not re.search(r'\b(tax|invoice|bill|receipt|gstin|memo)\b', line, re.I) and len(line) >= 3:
+                    merchant_name = line[:255]
+                    merchant_confidence = 0.60
+                    break
+            if not merchant_name:
+                merchant_name = lines[0][:255]
+                merchant_confidence = 0.40
 
         # 2. Date Extraction (YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY, Mon DD YYYY, DD Mon YYYY, etc.)
         receipt_date: Optional[date] = None
@@ -145,7 +201,6 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
                 m_str = mon_dd_match.group(1).lower()
                 d_val = int(mon_dd_match.group(2))
                 y_val = int(mon_dd_match.group(3))
-                # Try matching month name (prefix match for abbreviated forms)
                 m_num = mon_map.get(m_str)
                 if not m_num:
                     m_str_clean = m_str.replace('0', 'o')
@@ -182,61 +237,97 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
         elif "$" in cleaned_text or re.search(r'\bUSD\b', cleaned_text, re.I):
             currency = "USD"
 
-        # 4. Total, Subtotal, and Tax Extraction
+        # 4. Total Amount Extraction (Primary purpose: accurately find payable claim amount)
         total_amount: Optional[Decimal] = None
         subtotal_amount: Optional[Decimal] = None
         tax_amount: Optional[Decimal] = None
         total_confidence = 0.0
 
-        # Currency pattern (symbols and common abbreviations)
         _currency_pat = r'(?:[\$\u20ac\u00a3\u20b9]|Rs\.?\s*|INR\s*|USD\s*|EUR\s*|GBP\s*)?'
-        _total_label = r'\b(?:TOTAL\s*(?:AMOUNT)?|AMOUNT\s*DUE|BALANCE\s*DUE|GRAND\s*TOTAL)'
-
-        # Pass 1: Total with decimal amount on same line
-        total_match = re.search(
-            _total_label + r'\s*(?:\([^)]*\))?\s*[:=]?\s*' + _currency_pat + r'\s*([0-9]+[.,][0-9]{1,2})\b',
-            cleaned_text, re.I
+        # Includes common OCR label variations & typos: T0TAL, TOTAI, TOTL
+        _total_label = (
+            r'\b(?:TOTAL\s*(?:AMOUNT)?|T[0O]TA[LI1]|T[0O]TL|GRAND\s*TOTAL|FINAL\s*(?:TOTAL|AMOUNT)|'
+            r'NET\s*(?:AMOUNT|PAYABLE|TOTAL)|AMOUNT\s*(?:DUE|PAYABLE|PAID)|BALANCE\s*DUE|BILL\s*AMOUNT|'
+            r'PAID\s*AMOUNT|AMOUNT|AMT)\b'
         )
-        if total_match:
-            val_str = total_match.group(1).replace(',', '.')
-            try:
-                total_amount = Decimal(val_str)
-                total_confidence = 0.95
-            except Exception:
-                pass
 
-        # Pass 2: Total with whole number (no decimals, e.g. "TOTAL: Rs 450")
-        if total_amount is None:
-            total_whole_match = re.search(
-                _total_label + r'\s*(?:\([^)]*\))?\s*[:=]?\s*' + _currency_pat + r'\s*([0-9]{2,})\b',
-                cleaned_text, re.I
-            )
-            if total_whole_match:
-                val = total_whole_match.group(1)
-                # Avoid matching year values like 2026
-                if not re.match(r'^20\d{2}$', val):
+        # Pass 1: Same-line Label + [Currency] + Amount (decimal or whole number, optional /-)
+        same_line_pat = (
+            _total_label +
+            r'\s*(?:\([^)]*\))?\s*[:=]?\s*' +
+            _currency_pat +
+            r'\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)(?:\s*/-)?\b'
+        )
+        matches = list(re.finditer(same_line_pat, cleaned_text, re.I))
+        if matches:
+            for m in reversed(matches):
+                raw_val = m.group(1).replace(',', '')
+                if not re.match(r'^20\d{2}$', raw_val):
                     try:
-                        total_amount = Decimal(val)
-                        total_confidence = 0.80
-                        review_reasons.append("Total amount has no decimal places; verify correctness")
+                        v = Decimal(raw_val)
+                        if v > 0:
+                            total_amount = v
+                            total_confidence = 0.95
+                            break
                     except Exception:
                         pass
 
-        # Pass 3: Total label on one line, amount on next (OCR split)
+        # Pass 2: Next-line split (Label on line 1, Amount on line 2)
         if total_amount is None:
-            total_split_match = re.search(
-                _total_label + r'\s*(?:AMOUNT)?\s*[:=]?\s*\n\s*' + _currency_pat + r'\s*([0-9]+[.,]?[0-9]*)\b',
-                cleaned_text, re.I
+            split_pat = (
+                _total_label +
+                r'\s*[:=]?\s*\n\s*' +
+                _currency_pat +
+                r'\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)(?:\s*/-)?\b'
             )
-            if total_split_match:
-                val_str = total_split_match.group(1).replace(',', '.')
-                if val_str and not re.match(r'^20\d{2}$', val_str):
+            m_split = re.search(split_pat, cleaned_text, re.I)
+            if m_split:
+                raw_val = m_split.group(1).replace(',', '')
+                if not re.match(r'^20\d{2}$', raw_val):
                     try:
-                        total_amount = Decimal(val_str)
-                        total_confidence = 0.75
-                        review_reasons.append("Total found on line after label; verify amount")
+                        v = Decimal(raw_val)
+                        if v > 0:
+                            total_amount = v
+                            total_confidence = 0.85
                     except Exception:
                         pass
+
+        # Pass 3: Currency-explicit amounts (e.g. "Rs. 450", "₹ 1,250.00", "$17.90")
+        if total_amount is None:
+            curr_strict_pat = (
+                r'(?:[\$\u20ac\u00a3\u20b9]|Rs\.?\s+|INR\s+|USD\s+|EUR\s+|GBP\s+)'
+                r'([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)(?:\s*/-)?\b'
+            )
+            curr_matches = list(re.finditer(curr_strict_pat, cleaned_text, re.I))
+            candidates = []
+            for cm in curr_matches:
+                raw_val = cm.group(1).replace(',', '')
+                if not re.match(r'^20\d{2}$', raw_val):
+                    try:
+                        candidates.append(Decimal(raw_val))
+                    except Exception:
+                        pass
+            if candidates:
+                total_amount = max(candidates)
+                total_confidence = 0.80
+
+        # Pass 4: Fallback heuristic: Largest monetary amount from lines (skipping tax lines)
+        if total_amount is None:
+            amount_pat = r'\b([0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2}|[0-9]+\.[0-9]{2})\b'
+            all_amounts = []
+            for line in cleaned_text.splitlines():
+                if re.search(r'\b(tax|vat|gst|cgst|sgst|discount|subtotal)\b', line, re.I):
+                    continue
+                for am in re.finditer(amount_pat, line):
+                    raw_val = am.group(1).replace(',', '')
+                    try:
+                        all_amounts.append(Decimal(raw_val))
+                    except Exception:
+                        pass
+            if all_amounts:
+                total_amount = max(all_amounts)
+                total_confidence = 0.70
+                review_reasons.append("Total amount inferred from receipt amounts; verify value")
 
         # Subtotal (with decimal or whole number)
         subtotal_match = re.search(
@@ -261,27 +352,6 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
                 tax_amount = Decimal(val_str)
             except Exception:
                 pass
-
-        # Fallback: search for largest currency-adjacent amount if no explicit total found
-        if total_amount is None:
-            # Match amounts with optional currency symbols or standalone decimal amounts
-            all_amounts = re.findall(r'(?:[\$\u20ac\u00a3\u20b9]|Rs\.?\s*)\s*([0-9]+[.,]?[0-9]*)\b', cleaned_text)
-            # Also match standalone decimal numbers (e.g., 45.50)
-            all_amounts += re.findall(r'\b([0-9]+\.[0-9]{1,2})\b', cleaned_text)
-            decimals = []
-            for a in all_amounts:
-                a_clean = a.replace(',', '.')
-                try:
-                    d = Decimal(a_clean)
-                    # Filter out years and very small numbers
-                    if d > 0 and not re.match(r'^20\d{2}$', a_clean.split('.')[0]):
-                        decimals.append(d)
-                except Exception:
-                    pass
-            if decimals:
-                total_amount = max(decimals)
-                total_confidence = 0.60
-                review_reasons.append("Total amount inferred from largest parsed number; verify before submitting")
 
         # 5. Receipt Number
         receipt_number: Optional[str] = None

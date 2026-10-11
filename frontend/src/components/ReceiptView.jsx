@@ -132,6 +132,23 @@ export default function ReceiptView({
         });
         if (res.status === 404) {
           if (isMounted) setExtraction(null);
+          // If OCR is completed, automatically trigger structured extraction
+          if (receipt.ocrStatus === 'COMPLETED' || receipt.ocr_status === 'COMPLETED') {
+            try {
+              const triggerRes = await fetch(`/api/receipts/${receipt.id}/extraction`, {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${authToken}`,
+                  'Content-Type': 'application/json',
+                },
+              });
+              const triggerData = await triggerRes.json();
+              if (triggerRes.ok && isMounted && triggerData.extraction) {
+                setExtraction(triggerData.extraction);
+                initEditForm(triggerData.extraction);
+              }
+            } catch (_) {}
+          }
           return;
         }
         const data = await res.json();
@@ -365,8 +382,28 @@ export default function ReceiptView({
     setActionLoading(true);
     setWorkflowError(null);
 
+    // If submitting and extraction is missing, trigger extraction first
+    if (actionType === 'SUBMIT' && !extraction) {
+      try {
+        const extRes = await fetch(`/api/receipts/${receipt.id}/extraction`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        const extData = await extRes.json();
+        if (extRes.ok && extData.extraction) {
+          setExtraction(extData.extraction);
+          initEditForm(extData.extraction);
+        }
+      } catch (_) {
+        // Continue to submission attempt
+      }
+    }
+
     // If submitting, automatically execute policy validation if not already completed
-    if (actionType === 'SUBMIT' && !validation) {
+    if (actionType === 'SUBMIT') {
       try {
         const valRes = await fetch(`/api/receipts/${receipt.id}/validation`, {
           method: 'POST',
@@ -432,7 +469,7 @@ export default function ReceiptView({
   const isEmployee = currentUser?.role === 'EMPLOYEE';
   const isManager = currentUser?.role === 'MANAGER';
   const isFinance = currentUser?.role === 'FINANCE';
-  const isSubmitter = currentUser && (receipt.uploaded_by === currentUser.id || receipt.uploadedBy === currentUser.id);
+  const isSubmitter = isEmployee || (currentUser && (receipt.uploaded_by === currentUser.id || receipt.uploadedBy === currentUser.id));
   const currentState = workflowData?.currentState || 'DRAFT';
   const canEditDetails = isEmployee && (currentState === 'DRAFT' || currentState === 'CORRECTION_REQUESTED');
 
@@ -524,6 +561,140 @@ export default function ReceiptView({
               {loadingExtraction ? 'Extracting...' : '✨ Run AI Extraction'}
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Prominent Expense Claim Submission Bar */}
+      <div
+        className="table-card"
+        id="claim-submission-banner"
+        style={{
+          padding: '20px 24px',
+          background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+          color: '#ffffff',
+          borderRadius: 'var(--radius-lg)',
+          border: '1px solid #334155',
+          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.2)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '20px',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', minWidth: '280px' }}>
+          <div
+            style={{
+              width: '52px',
+              height: '52px',
+              borderRadius: 'var(--radius-md)',
+              background: 'linear-gradient(135deg, var(--gold-primary) 0%, var(--gold-hover) 100%)',
+              color: '#0f172a',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '1.75rem',
+              fontWeight: 800,
+              boxShadow: '0 4px 12px rgba(217, 119, 6, 0.35)',
+              flexShrink: 0,
+            }}
+          >
+            💰
+          </div>
+          <div>
+            <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8', fontWeight: 700 }}>
+              Recognized Expense Claim
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap', marginTop: '2px' }}>
+              <span style={{ fontSize: '1.4rem', fontWeight: 800, color: '#f8fafc' }}>
+                {effective.merchantName || editForm.merchantName || 'Recognized Vendor'}
+              </span>
+              <span style={{ fontSize: '1.5rem', fontWeight: 800, color: '#fbbf24' }}>
+                {effective.currency || editForm.currency || 'INR'}{' '}
+                {effective.requestedAmount !== null && effective.requestedAmount !== undefined
+                  ? Number(effective.requestedAmount).toFixed(2)
+                  : effective.totalAmount !== null && effective.totalAmount !== undefined
+                  ? Number(effective.totalAmount).toFixed(2)
+                  : editForm.requestedAmount !== '' && editForm.requestedAmount !== undefined
+                  ? Number(editForm.requestedAmount).toFixed(2)
+                  : editForm.totalAmount !== '' && editForm.totalAmount !== undefined
+                  ? Number(editForm.totalAmount).toFixed(2)
+                  : '0.00'}
+              </span>
+            </div>
+            <div style={{ fontSize: '0.8125rem', color: '#cbd5e1', marginTop: '4px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              <span>📅 {effective.receiptDate || editForm.receiptDate || 'Date: N/A'}</span>
+              <span>🏷️ {effective.category || editForm.category || 'Other'}</span>
+              {effective.taxAmount !== null && effective.taxAmount !== undefined && (
+                <span style={{ color: '#94a3b8' }}>Tax: {Number(effective.taxAmount).toFixed(2)}</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Claim Action Buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          {isSubmitter && (currentState === 'DRAFT' || currentState === 'CORRECTION_REQUESTED') ? (
+            <>
+              {!isEditing && (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-md"
+                  id="btn-banner-edit-claim"
+                  style={{ color: '#f8fafc', borderColor: '#475569', background: 'rgba(255, 255, 255, 0.05)' }}
+                  onClick={() => {
+                    initEditForm(extraction);
+                    setIsEditing(true);
+                  }}
+                >
+                  ✏️ Adjust Name / Amount
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn btn-gold btn-lg"
+                id="btn-banner-submit-claim"
+                style={{
+                  fontWeight: 700,
+                  fontSize: '1rem',
+                  padding: '12px 24px',
+                  boxShadow: '0 4px 14px rgba(217, 119, 6, 0.4)',
+                }}
+                onClick={() => handleWorkflowAction('SUBMIT')}
+                disabled={actionLoading}
+              >
+                {actionLoading
+                  ? '⏳ Submitting Claim...'
+                  : currentState === 'CORRECTION_REQUESTED'
+                  ? '🚀 Resubmit Expense Claim'
+                  : '🚀 Submit Expense Claim'}
+              </button>
+            </>
+          ) : currentState === 'PENDING_APPROVAL' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '10px 16px', borderRadius: 'var(--radius-md)' }}>
+              <span style={{ fontSize: '1.25rem' }}>⏳</span>
+              <div>
+                <div style={{ fontWeight: 700, color: '#93c5fd', fontSize: '0.875rem' }}>Claim Submitted</div>
+                <div style={{ fontSize: '0.75rem', color: '#bfdbfe' }}>Queued for Manager review & approval</div>
+              </div>
+            </div>
+          ) : currentState === 'APPROVED' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '10px 16px', borderRadius: 'var(--radius-md)' }}>
+              <span style={{ fontSize: '1.25rem' }}>✅</span>
+              <div>
+                <div style={{ fontWeight: 700, color: '#6ee7b7', fontSize: '0.875rem' }}>Claim Approved</div>
+                <div style={{ fontSize: '0.75rem', color: '#a7f3d0' }}>Ready for Finance Batch processing</div>
+              </div>
+            </div>
+          ) : currentState === 'REJECTED' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '10px 16px', borderRadius: 'var(--radius-md)' }}>
+              <span style={{ fontSize: '1.25rem' }}>❌</span>
+              <div>
+                <div style={{ fontWeight: 700, color: '#fca5a5', fontSize: '0.875rem' }}>Claim Rejected</div>
+                <div style={{ fontSize: '0.75rem', color: '#fecaca' }}>Check audit log for reason</div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -1104,7 +1275,7 @@ export default function ReceiptView({
                     className="btn btn-gold btn-lg"
                     style={{ width: '100%' }}
                     onClick={() => handleWorkflowAction('SUBMIT')}
-                    disabled={actionLoading || !extraction}
+                    disabled={actionLoading}
                   >
                     {actionLoading
                       ? 'Submitting...'
