@@ -11,6 +11,7 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [showQueueSidebar, setShowQueueSidebar] = useState(true);
 
   async function fetchPendingReceipts() {
     if (!authToken) return;
@@ -176,26 +177,53 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
       </div>
 
       {/* Main Two-Panel Layout (Active Queue + Active Inspector) */}
-      <div className="split-view-container">
+      <div
+        className="manager-approvals-workspace"
+        style={{
+          display: 'flex',
+          gap: '24px',
+          alignItems: 'flex-start',
+          width: '100%',
+        }}
+      >
         {/* Left Panel: Active Queue */}
-        <div className="split-panel">
-          <div className="split-panel-header">
-            <div>
-              <span className="split-panel-title">Manager Approvals Queue</span>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                Showing {totalFiltered} {filterStatus === 'ALL' ? 'total' : filterStatus.toLowerCase()} expense claims
+        {showQueueSidebar && (
+          <div
+            className="split-panel manager-queue-sidebar"
+            style={{
+              width: '380px',
+              minWidth: '320px',
+              maxWidth: '400px',
+              flexShrink: 0,
+            }}
+          >
+            <div className="split-panel-header">
+              <div>
+                <span className="split-panel-title">Approvals Queue</span>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  {totalFiltered} {filterStatus === 'ALL' ? 'total' : filterStatus.toLowerCase()} claims
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={fetchPendingReceipts}
+                  disabled={loading}
+                  title="Refresh Queue"
+                >
+                  {loading ? '...' : '🔄'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => setShowQueueSidebar(false)}
+                  title="Collapse Queue for Wide Inspector"
+                >
+                  ◀ Hide
+                </button>
               </div>
             </div>
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              onClick={fetchPendingReceipts}
-              disabled={loading}
-              title="Refresh Queue"
-            >
-              {loading ? 'Refreshing...' : '🔄 Refresh'}
-            </button>
-          </div>
 
           {/* Quick Filter Tabs */}
           <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)', background: '#f8fafc', overflowX: 'auto' }}>
@@ -443,9 +471,25 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
             </div>
           )}
         </div>
+        )}
 
         {/* Right Panel: Active Inspector */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
+          {!showQueueSidebar && (
+            <div style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: '#f8fafc', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                id="btn-show-manager-queue"
+                onClick={() => setShowQueueSidebar(true)}
+              >
+                📋 Show Approvals Queue ({totalFiltered} claims)
+              </button>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                🔍 Wide Inspector Mode Active
+              </span>
+            </div>
+          )}
           {selectedReceipt ? (
             <ReceiptView
               receipt={selectedReceipt}

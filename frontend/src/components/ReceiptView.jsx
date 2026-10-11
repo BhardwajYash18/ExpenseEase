@@ -670,6 +670,39 @@ export default function ReceiptView({
                   : '🚀 Submit Expense Claim'}
               </button>
             </>
+          ) : isManager && currentState === 'PENDING_APPROVAL' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn btn-gold btn-md"
+                id="btn-manager-approve-top"
+                style={{ fontWeight: 700, padding: '10px 18px', background: '#10b981', borderColor: '#059669', color: '#fff' }}
+                onClick={() => setReasonModal({ type: 'APPROVE', reason: '' })}
+                disabled={actionLoading}
+              >
+                ✅ Approve Claim
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-md"
+                id="btn-manager-correct-top"
+                style={{ color: '#f59e0b', borderColor: '#d97706', background: 'rgba(245, 158, 11, 0.1)', padding: '10px 16px' }}
+                onClick={() => setReasonModal({ type: 'REQUEST_CORRECTION', reason: '' })}
+                disabled={actionLoading}
+              >
+                ↺ Request Correction
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-md"
+                id="btn-manager-reject-top"
+                style={{ color: '#ef4444', borderColor: '#dc2626', background: 'rgba(239, 68, 68, 0.1)', padding: '10px 16px' }}
+                onClick={() => setReasonModal({ type: 'REJECT', reason: '' })}
+                disabled={actionLoading}
+              >
+                ❌ Reject Claim
+              </button>
+            </div>
           ) : currentState === 'PENDING_APPROVAL' ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '10px 16px', borderRadius: 'var(--radius-md)' }}>
               <span style={{ fontSize: '1.25rem' }}>⏳</span>

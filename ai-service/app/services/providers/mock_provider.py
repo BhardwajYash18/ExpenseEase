@@ -81,9 +81,17 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
             "staples", "office depot", "officemax"
         ]
 
-        # 1. Merchant / Expense Name Extraction (Primary purpose: clean vendor/business name)
+        # 1. Merchant / Payee / Expense Name Extraction
         merchant_name: Optional[str] = None
         merchant_confidence = 0.0
+
+        stop_meta_words = {
+            'age', 'dob', 'date', 'dr', 'doctor', 'mr', 'mrs', 'ms', 'shri', 'smt',
+            'male', 'female', 'gender', 'sex', 'phone', 'ph', 'tel', 'mobile',
+            'address', 'addr', 'city', 'pin', 'pincode', 'bill', 'receipt', 'tax',
+            'dept', 'department', 'room', 'bed', 'reg', 'regn', 'id', 'no', 'num',
+            'yr', 'yrs', 'years', 'total', 'amt', 'amount', 'rs', 'inr', 'usd'
+        }
 
         # Step 1a: Check if any of the top lines match known popular brands
         for line in lines[:10]:
@@ -100,7 +108,33 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
             if merchant_name:
                 break
 
-        # Step 1b: Check for explicit Merchant / Store / Vendor label
+        # Step 1b: Scan for explicit Name label (e.g. "Name: Vivek Shah", "Patient Name: Vivek Shah")
+        # Specification: take words ONLY after the word 'name', exclude 'name' itself, and take at most three words.
+        if not merchant_name:
+            for idx, line in enumerate(lines[:12]):
+                if re.search(r'\bname\b', line, re.I):
+                    # Extract text strictly after the word 'name'
+                    after_name = re.sub(r'^.*?\bname\b\s*[:=\-]?\s*', '', line, flags=re.I).strip()
+                    if not after_name and idx + 1 < len(lines):
+                        after_name = lines[idx + 1].strip()
+
+                    if after_name:
+                        after_name = re.sub(r'^[=\-:\s\'"]+', '', after_name).strip()
+                        tokens = re.findall(r'[A-Za-z]+(?:\'[A-Za-z]+)?', after_name)
+                        selected_words = []
+                        for token in tokens:
+                            token_lower = token.lower()
+                            if token_lower == 'name' or token_lower in stop_meta_words:
+                                break
+                            selected_words.append(token)
+                            if len(selected_words) == 3:
+                                break
+                        if selected_words:
+                            merchant_name = " ".join(selected_words)
+                            merchant_confidence = 0.95
+                            break
+
+        # Step 1c: Check for explicit Merchant / Store / Vendor / Seller label
         if not merchant_name:
             for idx, line in enumerate(lines):
                 if re.match(r'^(?:Merchant|Store|Vendor|Billed\s*By|Seller)\b', line, re.I):
@@ -118,7 +152,7 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
                             merchant_confidence = 0.90
                             break
 
-        # Step 1c: Scan the top lines, rigorously filtering out invoice/tax/memo noise
+        # Step 1d: Scan the top lines, rigorously filtering out invoice/tax/memo noise
         if not merchant_name:
             for line in lines[:8]:
                 if any(re.search(pat, line, re.I) for pat in header_noise_patterns):
@@ -135,7 +169,7 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
                     merchant_confidence = 0.85
                     break
 
-        # Step 1d: Fallback: best non-empty line
+        # Step 1e: Fallback: best non-empty line
         if not merchant_name and lines:
             for line in lines[:5]:
                 if not re.search(r'\b(tax|invoice|bill|receipt|gstin|memo)\b', line, re.I) and len(line) >= 3:
