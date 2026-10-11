@@ -920,6 +920,23 @@ button, input, select, textarea {
   align-items: start;
 }
 
+.manager-approvals-workspace {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  width: 100%;
+}
+
+@media (max-width: 1100px) {
+  .manager-approvals-workspace {
+    flex-direction: column !important;
+  }
+  .manager-queue-sidebar {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
 .split-panel {
   background-color: var(--surface-card);
   border: 1px solid var(--border-subtle);

@@ -80,11 +80,23 @@ async function uploadReceipt(user, file) {
   // 5. Trigger OCR processing (synchronous for CP3 simplicity)
   const ocrResult = await processOCR(user.tenantId, receipt.id, storageKey);
 
+  // 5b. If OCR completed with text, trigger structured extraction immediately
+  if (ocrResult.ocr_status === 'COMPLETED' && ocrResult.raw_text) {
+    try {
+      const extractionService = require('./extractionService');
+      await extractionService.triggerExtraction(user.tenantId, receipt.id, user);
+    } catch (extErr) {
+      console.warn('[Receipt] Auto-extraction on upload skipped or failed:', extErr.message);
+    }
+  }
+
   // 6. Return safe receipt metadata (no filesystem paths, no storage_key)
   return {
     id: receipt.id,
     uploadStatus: receipt.upload_status,
     ocrStatus: ocrResult.ocr_status,
+    uploaded_by: receipt.uploaded_by,
+    uploadedBy: receipt.uploaded_by,
     originalFilename: receipt.original_filename,
     mimeType: receipt.mime_type,
     fileSizeBytes: receipt.file_size_bytes,

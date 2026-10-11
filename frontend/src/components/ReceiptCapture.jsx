@@ -37,39 +37,101 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded, autoStart
     setError(null);
     setCameraLoading(true);
 
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-          },
-        });
-        setIsCameraActive(true);
-        setCameraLoading(false);
-
-        // Attach stream after modal element renders
-        setTimeout(() => {
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-            videoRef.current.play().catch((err) => {
-              console.warn('[Camera] Video play warning:', err);
-            });
-          }
-        }, 150);
-        return;
-      } catch (err) {
-        console.warn('[Camera] Live camera stream failed, using native file fallback:', err.message);
-        setCameraLoading(false);
-      }
+    // Diagnostic: Check for secure context (HTTPS or localhost)
+    if (!window.isSecureContext) {
+      setError(
+        'Camera access requires a secure connection (HTTPS or localhost). ' +
+        'Your current URL is not considered secure by the browser. ' +
+        'If testing over LAN, access via localhost or use an HTTPS tunnel (e.g., ngrok). ' +
+        'You can still upload receipt files using "Browse Files".'
+      );
+      setCameraLoading(false);
+      return;
     }
 
-    // Fallback if WebRTC stream is denied/unavailable
-    if (cameraInputRef.current) {
-      cameraInputRef.current.click();
-    } else if (fileInputRef.current) {
-      fileInputRef.current.click();
+    // Diagnostic: Check if Camera API is available
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setError(
+        'Camera API (MediaDevices) is not available in this browser. ' +
+        'Please use a modern browser (Chrome, Edge, Firefox, Safari) on HTTPS. ' +
+        'You can still upload receipt files using "Browse Files".'
+      );
+      setCameraLoading(false);
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+      });
+      setIsCameraActive(true);
+      setCameraLoading(false);
+
+      // Attach stream after modal element renders
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch((err) => {
+            console.warn('[Camera] Video play warning:', err);
+          });
+        }
+      }, 150);
+      return;
+    } catch (err) {
+      setCameraLoading(false);
+      console.warn('[Camera] Live camera stream failed:', err.name, err.message);
+
+      // Provide specific, actionable diagnostics based on the error type
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setError(
+          'Camera permission was denied by the browser. ' +
+          'To fix this: click the lock/tune icon in your browser\'s address bar → set Camera to "Allow" → then try again. ' +
+          'You can also upload receipt files using "Browse Files".'
+        );
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        setError(
+          'No camera device was detected. Please connect a camera or webcam and try again. ' +
+          'You can also upload receipt files using "Browse Files".'
+        );
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        setError(
+          'Camera is currently in use by another application (e.g., Zoom, Teams, Google Meet). ' +
+          'Please close the other application and try again. ' +
+          'You can also upload receipt files using "Browse Files".'
+        );
+      } else if (err.name === 'OverconstrainedError') {
+        setError(
+          'Camera does not support the requested settings. Trying with default settings... ' +
+          'You can also upload receipt files using "Browse Files".'
+        );
+        // Retry with minimal constraints
+        try {
+          const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          setIsCameraActive(true);
+          setTimeout(() => {
+            if (videoRef.current) {
+              videoRef.current.srcObject = fallbackStream;
+              videoRef.current.play().catch(() => {});
+            }
+          }, 150);
+          setError(null);
+          return;
+        } catch (_retryErr) {
+          setError(
+            'Camera could not be started even with default settings. ' +
+            'You can upload receipt files using "Browse Files".'
+          );
+        }
+      } else {
+        setError(
+          `Camera could not be started: ${err.message || 'Unknown error'}. ` +
+          'You can still upload receipt files using "Browse Files".'
+        );
+      }
     }
   };
 

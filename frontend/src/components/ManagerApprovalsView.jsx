@@ -10,8 +10,9 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
   const [focusMode, setFocusMode] = useState(false);
+  const showQueueSidebar = !focusMode;
+  const setShowQueueSidebar = (show) => setFocusMode(!show);
 
   async function fetchPendingReceipts() {
     if (!authToken) return;
@@ -176,12 +177,20 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
         </div>
       </div>
 
-      {/* Main Responsive Two-Panel Layout */}
-      <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', width: '100%' }}>
-        {/* Left Panel: Active Queue (collapsible via focusMode) */}
+      {/* Main Two-Panel Layout (Active Queue + Active Inspector) */}
+      <div
+        className="manager-approvals-workspace"
+        style={{
+          display: 'flex',
+          gap: '20px',
+          alignItems: 'flex-start',
+          width: '100%',
+        }}
+      >
+        {/* Left Panel: Active Queue (collapsible via focusMode / showQueueSidebar) */}
         {!focusMode && (
           <div
-            className="split-panel"
+            className="split-panel manager-queue-sidebar"
             style={{
               width: '360px',
               minWidth: '320px',
@@ -201,15 +210,25 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
                   Showing {totalFiltered} {filterStatus === 'ALL' ? 'total' : filterStatus.toLowerCase()} expense claims
                 </div>
               </div>
-              <button
-                type="button"
-                className="btn btn-outline btn-sm"
-                onClick={fetchPendingReceipts}
-                disabled={loading}
-                title="Refresh Queue"
-              >
-                {loading ? 'Refreshing...' : '🔄 Refresh'}
-              </button>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={fetchPendingReceipts}
+                  disabled={loading}
+                  title="Refresh Queue"
+                >
+                  {loading ? 'Refreshing...' : '🔄 Refresh'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => setFocusMode(true)}
+                  title="Collapse Queue for Wide Inspector"
+                >
+                  ◀ Hide
+                </button>
+              </div>
             </div>
 
             {/* Quick Filter Tabs */}
@@ -461,7 +480,22 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
         )}
 
         {/* Right Panel: Active Inspector (Takes all remaining space or full width) */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
+          {focusMode && (
+            <div style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: '#f8fafc', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                id="btn-show-manager-queue"
+                onClick={() => setFocusMode(false)}
+              >
+                📋 Show Approvals Queue ({totalFiltered} claims)
+              </button>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                🔍 Wide Inspector Mode Active
+              </span>
+            </div>
+          )}
           {selectedReceipt ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               {/* Header Navigation with Focus Mode Toggle */}
