@@ -24,18 +24,80 @@ def get_rapid_ocr():
 
 def extract_with_rapid_ocr(image_bytes: bytes) -> str:
     """
-    Extract text using RapidOCR (ONNX Runtime-based offline OCR).
+    Extract text using RapidOCR with spatial-aware line merging.
+
+    RapidOCR detects text boxes independently. On receipts where labels
+    (e.g., "Total Amount") are left-aligned and amounts (e.g., "$8.75") are
+    right-aligned, they end up as separate text-detection boxes. This function
+    uses box coordinates to merge fragments that share the same visual line,
+    producing coherent lines like "Total Amount $8.75" instead of two separate
+    lines "Total Amount" and "$8.75".
     """
     engine = get_rapid_ocr()
     if engine is None:
         return ""
-    
+
     try:
         result, _ = engine(image_bytes)
         if not result:
             return ""
-        lines = [line[1] for line in result if line and len(line) > 1 and line[1]]
-        return "\n".join(lines).strip()
+
+        # Collect detections with spatial information
+        detections = []
+        for item in result:
+            if not item or len(item) < 2 or not item[1]:
+                continue
+            box = item[0]   # [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+            text = str(item[1]).strip()
+            if not text:
+                continue
+            # Calculate vertical center and left edge from bounding box
+            y_center = sum(pt[1] for pt in box) / 4.0
+            x_left = min(pt[0] for pt in box)
+            box_height = max(pt[1] for pt in box) - min(pt[1] for pt in box)
+            detections.append({
+                'y_center': y_center,
+                'x_left': x_left,
+                'text': text,
+                'height': max(box_height, 1),
+            })
+
+        if not detections:
+            return ""
+
+        # Compute dynamic Y-threshold from average text-box height.
+        # Boxes whose Y centers are within this threshold are on the same visual line.
+        avg_height = sum(d['height'] for d in detections) / len(detections)
+        y_threshold = max(avg_height * 0.6, 10)  # At least 10px
+
+        # Sort all detections top-to-bottom
+        detections.sort(key=lambda d: d['y_center'])
+
+        # Group detections into visual lines
+        lines = []
+        current_line = [detections[0]]
+
+        for det in detections[1:]:
+            if abs(det['y_center'] - current_line[0]['y_center']) < y_threshold:
+                current_line.append(det)
+            else:
+                lines.append(current_line)
+                current_line = [det]
+        lines.append(current_line)
+
+        # Within each line, sort left-to-right and join with spaces
+        merged_lines = []
+        for line_dets in lines:
+            line_dets.sort(key=lambda d: d['x_left'])
+            merged_text = " ".join(d['text'] for d in line_dets)
+            merged_lines.append(merged_text)
+
+        full_text = "\n".join(merged_lines).strip()
+        logger.info(
+            "RapidOCR extracted %d characters across %d merged lines (from %d raw detections)",
+            len(full_text), len(merged_lines), len(detections)
+        )
+        return full_text
     except Exception as e:
         logger.error("RapidOCR execution error: %s", str(e))
         return ""
@@ -43,14 +105,16 @@ def extract_with_rapid_ocr(image_bytes: bytes) -> str:
 
 def extract_text(image_bytes: bytes, raw_image_bytes: bytes = None) -> dict:
     """
-    Extract raw text from an image using resilient OCR pipeline:
-    1. Try Tesseract OCR if available.
-    2. Fall back to RapidOCR (ONNX) if Tesseract is not installed or returns empty text.
-    3. Handles both preprocessed and raw image inputs.
+    Extract raw text from an image using resilient multi-engine OCR pipeline:
+    1. Try Tesseract OCR if available (benefits from heavy preprocessing / Otsu).
+    2. Fall back to RapidOCR (ONNX neural OCR):
+       a. Try raw (unprocessed) image first — neural OCR works best on originals.
+       b. Try preprocessed image as fallback.
+       c. Keep the result with more extracted text.
 
     Args:
-        image_bytes: Preprocessed or raw image bytes
-        raw_image_bytes: Optional original image bytes for fallback
+        image_bytes: Preprocessed image bytes (may be Otsu-binarized or light-preprocessed)
+        raw_image_bytes: Optional original unmodified image bytes
 
     Returns:
         dict with keys:
@@ -64,7 +128,7 @@ def extract_text(image_bytes: bytes, raw_image_bytes: bytes = None) -> dict:
     engine_used = "tesseract"
     error_details = None
 
-    # Step 1: Try Tesseract if installed
+    # Step 1: Try Tesseract if installed (works best with binarized input)
     try:
         import pytesseract
         image = Image.open(io.BytesIO(image_bytes))
@@ -79,18 +143,34 @@ def extract_text(image_bytes: bytes, raw_image_bytes: bytes = None) -> dict:
 
     # Step 2: Fallback to RapidOCR if Tesseract gave no text or failed
     if not extracted_text:
-        # Try with preprocessed image bytes
-        rapid_text = extract_with_rapid_ocr(image_bytes)
-        
-        # If preprocessed was empty and raw bytes available, try raw
-        if not rapid_text and raw_image_bytes:
-            rapid_text = extract_with_rapid_ocr(raw_image_bytes)
+        rapid_raw_text = ""
+        rapid_prep_text = ""
 
-        if rapid_text:
-            extracted_text = rapid_text
+        # Try raw image FIRST — RapidOCR (neural OCR) works best on unmodified images
+        if raw_image_bytes:
+            rapid_raw_text = extract_with_rapid_ocr(raw_image_bytes)
+
+        # Also try preprocessed image (may help with very noisy/dark images)
+        rapid_prep_text = extract_with_rapid_ocr(image_bytes)
+
+        # Pick the result with more text content (proxy for OCR quality)
+        if rapid_raw_text and rapid_prep_text:
+            if len(rapid_raw_text) >= len(rapid_prep_text):
+                extracted_text = rapid_raw_text
+                logger.info("RapidOCR: using raw image result (%d chars vs %d preprocessed)",
+                            len(rapid_raw_text), len(rapid_prep_text))
+            else:
+                extracted_text = rapid_prep_text
+                logger.info("RapidOCR: using preprocessed result (%d chars vs %d raw)",
+                            len(rapid_prep_text), len(rapid_raw_text))
+        elif rapid_raw_text:
+            extracted_text = rapid_raw_text
+        elif rapid_prep_text:
+            extracted_text = rapid_prep_text
+
+        if extracted_text:
             engine_used = "rapidocr"
             error_details = None
-            logger.info("RapidOCR extracted %d characters (%d lines)", len(rapid_text), len(rapid_text.splitlines()))
 
     processed_timestamp = datetime.now(timezone.utc).isoformat()
 
@@ -110,4 +190,3 @@ def extract_text(image_bytes: bytes, raw_image_bytes: bytes = None) -> dict:
             'error_message': error_details or 'OCR could not detect readable text in the image',
             'processed_at': processed_timestamp,
         }
-

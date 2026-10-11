@@ -95,3 +95,81 @@ def preprocess_image(image_bytes: bytes) -> bytes:
     except Exception as e:
         logger.error("Image preprocessing failed: %s", str(e))
         raise ValueError(f"Failed to preprocess image: {str(e)}")
+
+
+# Minimum dimension before upscaling for OCR readability
+MIN_OCR_DIMENSION = 1000
+
+
+def preprocess_image_light(image_bytes: bytes) -> bytes:
+    """
+    Light preprocessing optimized for neural-network-based OCR (RapidOCR).
+
+    Unlike preprocess_image (which applies Otsu binarization for Tesseract),
+    this version preserves grayscale gradients that neural OCR models rely on.
+
+    Pipeline:
+    1. EXIF orientation handling
+    2. Grayscale conversion
+    3. Upscale if image is too small (improves OCR on low-res camera photos)
+    4. Downscale if image is too large
+    5. CLAHE contrast enhancement
+    6. Bilateral filter denoising (edge-preserving, better than Gaussian blur)
+
+    No thresholding is applied — this is intentional for neural OCR accuracy.
+    """
+    try:
+        image = Image.open(io.BytesIO(image_bytes))
+        image = ImageOps.exif_transpose(image)
+
+        logger.info(
+            "Light preprocessing: format=%s, size=%s, mode=%s",
+            image.format, image.size, image.mode
+        )
+
+        if image.mode != 'L':
+            image = image.convert('L')
+
+        width, height = image.size
+
+        # Upscale small images for better OCR recognition
+        if max(width, height) < MIN_OCR_DIMENSION:
+            ratio = MIN_OCR_DIMENSION / max(width, height)
+            new_size = (int(width * ratio), int(height * ratio))
+            image = image.resize(new_size, Image.Resampling.LANCZOS)
+            logger.info("Upscaled small image to %s for OCR", new_size)
+
+        # Downscale if too large
+        if max(width, height) > MAX_OCR_DIMENSION:
+            ratio = MAX_OCR_DIMENSION / max(width, height)
+            new_size = (int(width * ratio), int(height * ratio))
+            image = image.resize(new_size, Image.Resampling.LANCZOS)
+            logger.info("Downscaled large image to %s", new_size)
+
+        img_array = np.array(image)
+
+        try:
+            import cv2
+            # CLAHE for contrast enhancement
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            img_array = clahe.apply(img_array)
+            # Bilateral filter: preserves edges while removing noise
+            img_array = cv2.bilateralFilter(img_array, 5, 50, 50)
+        except ImportError:
+            logger.warning("OpenCV not available, using Pillow-only light preprocessing")
+            image = Image.fromarray(img_array)
+            image = ImageOps.autocontrast(image)
+            img_array = np.array(image)
+
+        result_image = Image.fromarray(img_array)
+        output = io.BytesIO()
+        result_image.save(output, format='PNG')
+        output.seek(0)
+
+        logger.info("Light preprocessing complete: output size=%d bytes", len(output.getvalue()))
+        return output.getvalue()
+
+    except Exception as e:
+        logger.error("Light image preprocessing failed: %s", str(e))
+        raise ValueError(f"Failed to preprocess image (light): {str(e)}")
+

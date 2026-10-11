@@ -90,10 +90,20 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
             merchant_confidence = 0.50
 
 
-        # 2. Date Extraction (YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY, DD Mon YYYY, etc.)
+        # 2. Date Extraction (YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY, Mon DD YYYY, DD Mon YYYY, etc.)
         receipt_date: Optional[date] = None
         date_confidence = 0.0
-        # Match YYYY-MM-DD or YYYY/MM/DD
+
+        # Shared month name lookup (handles OCR artifacts like '0ct' for 'Oct')
+        mon_map = {
+            'jan': 1, 'january': 1, 'feb': 2, 'february': 2, 'mar': 3, 'march': 3,
+            'apr': 4, 'april': 4, 'may': 5, 'jun': 6, 'june': 6, 'jul': 7, 'july': 7,
+            'aug': 8, 'august': 8, 'sep': 9, 'sept': 9, 'september': 9,
+            'oct': 10, '0ct': 10, 'october': 10,
+            'nov': 11, 'november': 11, 'dec': 12, 'december': 12
+        }
+
+        # Pattern 1: YYYY-MM-DD or YYYY/MM/DD (ISO format)
         iso_match = re.search(r'\b(20\d\d)[-/](0[1-9]|1[0-2])[-/](0[1-9]|[12]\d|3[01])\b', cleaned_text)
         if iso_match:
             try:
@@ -102,8 +112,8 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
             except ValueError:
                 pass
 
+        # Pattern 2: MM/DD/YYYY (US format — first number is month 01-12)
         if not receipt_date:
-            # Match MM/DD/YYYY or DD/MM/YYYY
             slash_match = re.search(r'\b(0[1-9]|1[0-2])/(0[1-9]|[12]\d|3[01])/(20\d\d)\b', cleaned_text)
             if slash_match:
                 try:
@@ -112,15 +122,44 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
                 except ValueError:
                     pass
 
+        # Pattern 3: DD/MM/YYYY where day > 12 (unambiguously DD/MM/YYYY, common in India/UK/EU)
         if not receipt_date:
-            # Match DD Mon YYYY (e.g. 08 Oct 2026, 8 October 2026, handling OCR 0ct)
-            mon_map = {
-                'jan': 1, 'january': 1, 'feb': 2, 'february': 2, 'mar': 3, 'march': 3,
-                'apr': 4, 'april': 4, 'may': 5, 'jun': 6, 'june': 6, 'jul': 7, 'july': 7,
-                'aug': 8, 'august': 8, 'sep': 9, 'september': 9, 'oct': 10, '0ct': 10, 'october': 10,
-                'nov': 11, 'november': 11, 'dec': 12, 'december': 12
-            }
-            mon_match = re.search(r'\b([0-3]?\d)[\s\-_]+([A-Za-z0-9]{3,9})[\s\-_]+(20\d\d)\b', cleaned_text)
+            dd_mm_match = re.search(r'\b(1[3-9]|2\d|3[01])[-/](0[1-9]|1[0-2])[-/](20\d\d)\b', cleaned_text)
+            if dd_mm_match:
+                try:
+                    d_val = int(dd_mm_match.group(1))
+                    m_val = int(dd_mm_match.group(2))
+                    y_val = int(dd_mm_match.group(3))
+                    receipt_date = date(y_val, m_val, d_val)
+                    date_confidence = 0.88
+                except (ValueError, Exception):
+                    pass
+
+        # Pattern 4: Mon DD, YYYY or Month DD, YYYY (e.g. "Oct 12, 2026", "October 12, 2026")
+        if not receipt_date:
+            mon_dd_match = re.search(
+                r'\b([A-Za-z]{3,9})[.,]?\s+(\d{1,2})[,.]?\s+(20\d\d)\b',
+                cleaned_text, re.I
+            )
+            if mon_dd_match:
+                m_str = mon_dd_match.group(1).lower()
+                d_val = int(mon_dd_match.group(2))
+                y_val = int(mon_dd_match.group(3))
+                # Try matching month name (prefix match for abbreviated forms)
+                m_num = mon_map.get(m_str)
+                if not m_num:
+                    m_str_clean = m_str.replace('0', 'o')
+                    m_num = mon_map.get(m_str_clean)
+                if m_num and 1 <= d_val <= 31:
+                    try:
+                        receipt_date = date(y_val, m_num, d_val)
+                        date_confidence = 0.90
+                    except (ValueError, Exception):
+                        pass
+
+        # Pattern 5: DD Mon YYYY (e.g. "08 Oct 2026", "8 October 2026")
+        if not receipt_date:
+            mon_match = re.search(r'\b([0-3]?\d)[\s\-_]+([A-Za-z0-9]{3,9})[\s\-_,]+(20\d\d)\b', cleaned_text)
             if mon_match:
                 d_str, m_str, y_str = mon_match.group(1), mon_match.group(2).lower(), mon_match.group(3)
                 m_str_clean = m_str.replace('0', 'o')
@@ -149,8 +188,15 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
         tax_amount: Optional[Decimal] = None
         total_confidence = 0.0
 
-        # Look for explicit Total lines
-        total_match = re.search(r'\b(?:TOTAL\s*(?:AMOUNT)?|AMOUNT DUE|BALANCE DUE|GRAND TOTAL)\s*(?:\([^)]*\))?\s*[:=]?\s*[\$€£₹]?\s*([0-9]+[.,][0-9]{2})\b', cleaned_text, re.I)
+        # Currency pattern (symbols and common abbreviations)
+        _currency_pat = r'(?:[\$\u20ac\u00a3\u20b9]|Rs\.?\s*|INR\s*|USD\s*|EUR\s*|GBP\s*)?'
+        _total_label = r'\b(?:TOTAL\s*(?:AMOUNT)?|AMOUNT\s*DUE|BALANCE\s*DUE|GRAND\s*TOTAL)'
+
+        # Pass 1: Total with decimal amount on same line
+        total_match = re.search(
+            _total_label + r'\s*(?:\([^)]*\))?\s*[:=]?\s*' + _currency_pat + r'\s*([0-9]+[.,][0-9]{1,2})\b',
+            cleaned_text, re.I
+        )
         if total_match:
             val_str = total_match.group(1).replace(',', '.')
             try:
@@ -159,8 +205,44 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
             except Exception:
                 pass
 
-        # Subtotal
-        subtotal_match = re.search(r'\b(?:SUBTOTAL|SUB TOTAL|NET AMOUNT)\s*(?:\([^)]*\))?\s*[:=]?\s*[\$€£₹]?\s*([0-9]+[.,][0-9]{2})\b', cleaned_text, re.I)
+        # Pass 2: Total with whole number (no decimals, e.g. "TOTAL: Rs 450")
+        if total_amount is None:
+            total_whole_match = re.search(
+                _total_label + r'\s*(?:\([^)]*\))?\s*[:=]?\s*' + _currency_pat + r'\s*([0-9]{2,})\b',
+                cleaned_text, re.I
+            )
+            if total_whole_match:
+                val = total_whole_match.group(1)
+                # Avoid matching year values like 2026
+                if not re.match(r'^20\d{2}$', val):
+                    try:
+                        total_amount = Decimal(val)
+                        total_confidence = 0.80
+                        review_reasons.append("Total amount has no decimal places; verify correctness")
+                    except Exception:
+                        pass
+
+        # Pass 3: Total label on one line, amount on next (OCR split)
+        if total_amount is None:
+            total_split_match = re.search(
+                _total_label + r'\s*(?:AMOUNT)?\s*[:=]?\s*\n\s*' + _currency_pat + r'\s*([0-9]+[.,]?[0-9]*)\b',
+                cleaned_text, re.I
+            )
+            if total_split_match:
+                val_str = total_split_match.group(1).replace(',', '.')
+                if val_str and not re.match(r'^20\d{2}$', val_str):
+                    try:
+                        total_amount = Decimal(val_str)
+                        total_confidence = 0.75
+                        review_reasons.append("Total found on line after label; verify amount")
+                    except Exception:
+                        pass
+
+        # Subtotal (with decimal or whole number)
+        subtotal_match = re.search(
+            r'\b(?:SUBTOTAL|SUB\s*TOTAL|NET\s*AMOUNT)\s*(?:\([^)]*\))?\s*[:=]?\s*' + _currency_pat + r'\s*([0-9]+[.,]?[0-9]*)\b',
+            cleaned_text, re.I
+        )
         if subtotal_match:
             val_str = subtotal_match.group(1).replace(',', '.')
             try:
@@ -168,8 +250,11 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
             except Exception:
                 pass
 
-        # Tax
-        tax_match = re.search(r'\b(?:TAX|VAT|GST|HST)\s*(?:\([^)]*\))?\s*[:=]?\s*[\$€£₹]?\s*([0-9]+[.,][0-9]{2})\b', cleaned_text, re.I)
+        # Tax (with decimal or whole number)
+        tax_match = re.search(
+            r'\b(?:TAX|VAT|GST|CGST|SGST|IGST|HST)\s*(?:\([^)]*\))?\s*[:=]?\s*' + _currency_pat + r'\s*([0-9]+[.,]?[0-9]*)\b',
+            cleaned_text, re.I
+        )
         if tax_match:
             val_str = tax_match.group(1).replace(',', '.')
             try:
@@ -177,13 +262,20 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
             except Exception:
                 pass
 
-        # If no explicit total found, search for largest currency amount
+        # Fallback: search for largest currency-adjacent amount if no explicit total found
         if total_amount is None:
-            all_amounts = re.findall(r'[\$€£₹]?\s*([0-9]+\.[0-9]{2})\b', cleaned_text)
+            # Match amounts with optional currency symbols or standalone decimal amounts
+            all_amounts = re.findall(r'(?:[\$\u20ac\u00a3\u20b9]|Rs\.?\s*)\s*([0-9]+[.,]?[0-9]*)\b', cleaned_text)
+            # Also match standalone decimal numbers (e.g., 45.50)
+            all_amounts += re.findall(r'\b([0-9]+\.[0-9]{1,2})\b', cleaned_text)
             decimals = []
             for a in all_amounts:
+                a_clean = a.replace(',', '.')
                 try:
-                    decimals.append(Decimal(a))
+                    d = Decimal(a_clean)
+                    # Filter out years and very small numbers
+                    if d > 0 and not re.match(r'^20\d{2}$', a_clean.split('.')[0]):
+                        decimals.append(d)
                 except Exception:
                     pass
             if decimals:
