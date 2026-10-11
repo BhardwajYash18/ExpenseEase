@@ -10,8 +10,9 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [showQueueSidebar, setShowQueueSidebar] = useState(true);
+  const [focusMode, setFocusMode] = useState(false);
+  const showQueueSidebar = !focusMode;
+  const setShowQueueSidebar = (show) => setFocusMode(!show);
 
   async function fetchPendingReceipts() {
     if (!authToken) return;
@@ -181,27 +182,32 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
         className="manager-approvals-workspace"
         style={{
           display: 'flex',
-          gap: '24px',
+          gap: '20px',
           alignItems: 'flex-start',
           width: '100%',
         }}
       >
-        {/* Left Panel: Active Queue */}
-        {showQueueSidebar && (
+        {/* Left Panel: Active Queue (collapsible via focusMode / showQueueSidebar) */}
+        {!focusMode && (
           <div
             className="split-panel manager-queue-sidebar"
             style={{
-              width: '380px',
+              width: '360px',
               minWidth: '320px',
-              maxWidth: '400px',
+              maxWidth: '380px',
               flexShrink: 0,
+              backgroundColor: 'var(--surface-card)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-lg)',
+              boxShadow: 'var(--shadow-xs)',
+              overflow: 'hidden',
             }}
           >
             <div className="split-panel-header">
               <div>
-                <span className="split-panel-title">Approvals Queue</span>
+                <span className="split-panel-title">Manager Approvals Queue</span>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  {totalFiltered} {filterStatus === 'ALL' ? 'total' : filterStatus.toLowerCase()} claims
+                  Showing {totalFiltered} {filterStatus === 'ALL' ? 'total' : filterStatus.toLowerCase()} expense claims
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '6px' }}>
@@ -212,12 +218,12 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
                   disabled={loading}
                   title="Refresh Queue"
                 >
-                  {loading ? '...' : '🔄'}
+                  {loading ? 'Refreshing...' : '🔄 Refresh'}
                 </button>
                 <button
                   type="button"
                   className="btn btn-outline btn-sm"
-                  onClick={() => setShowQueueSidebar(false)}
+                  onClick={() => setFocusMode(true)}
                   title="Collapse Queue for Wide Inspector"
                 >
                   ◀ Hide
@@ -225,263 +231,263 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
               </div>
             </div>
 
-          {/* Quick Filter Tabs */}
-          <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)', background: '#f8fafc', overflowX: 'auto' }}>
-            <button
-              type="button"
-              style={{
-                padding: '10px 14px',
-                border: 'none',
-                background: 'none',
-                fontSize: '0.8125rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                borderBottom: filterStatus === 'PENDING' ? '2px solid var(--gold-primary)' : '2px solid transparent',
-                color: filterStatus === 'PENDING' ? 'var(--gold-hover)' : 'var(--text-secondary)',
-              }}
-              onClick={() => { setFilterStatus('PENDING'); setCurrentPage(1); }}
-            >
-              ⏳ Pending ({pendingClaims.length})
-            </button>
-            <button
-              type="button"
-              style={{
-                padding: '10px 14px',
-                border: 'none',
-                background: 'none',
-                fontSize: '0.8125rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                borderBottom: filterStatus === 'APPROVED' ? '2px solid var(--gold-primary)' : '2px solid transparent',
-                color: filterStatus === 'APPROVED' ? 'var(--gold-hover)' : 'var(--text-secondary)',
-              }}
-              onClick={() => { setFilterStatus('APPROVED'); setCurrentPage(1); }}
-            >
-              ✅ Approved ({approvedClaims.length})
-            </button>
-            <button
-              type="button"
-              style={{
-                padding: '10px 14px',
-                border: 'none',
-                background: 'none',
-                fontSize: '0.8125rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                borderBottom: filterStatus === 'CORRECTION' ? '2px solid var(--gold-primary)' : '2px solid transparent',
-                color: filterStatus === 'CORRECTION' ? 'var(--gold-hover)' : 'var(--text-secondary)',
-              }}
-              onClick={() => { setFilterStatus('CORRECTION'); setCurrentPage(1); }}
-            >
-              ↺ Returned ({correctionClaims.length})
-            </button>
-            <button
-              type="button"
-              style={{
-                padding: '10px 14px',
-                border: 'none',
-                background: 'none',
-                fontSize: '0.8125rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                borderBottom: filterStatus === 'ALL' ? '2px solid var(--gold-primary)' : '2px solid transparent',
-                color: filterStatus === 'ALL' ? 'var(--gold-hover)' : 'var(--text-secondary)',
-              }}
-              onClick={() => { setFilterStatus('ALL'); setCurrentPage(1); }}
-            >
-              All ({totalClaims})
-            </button>
-          </div>
+            {/* Quick Filter Tabs */}
+            <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)', background: '#f8fafc', overflowX: 'auto' }}>
+              <button
+                type="button"
+                style={{
+                  padding: '10px 14px',
+                  border: 'none',
+                  background: 'none',
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  borderBottom: filterStatus === 'PENDING' ? '2px solid var(--gold-primary)' : '2px solid transparent',
+                  color: filterStatus === 'PENDING' ? 'var(--gold-hover)' : 'var(--text-secondary)',
+                }}
+                onClick={() => { setFilterStatus('PENDING'); setCurrentPage(1); }}
+              >
+                ⏳ Pending ({pendingClaims.length})
+              </button>
+              <button
+                type="button"
+                style={{
+                  padding: '10px 14px',
+                  border: 'none',
+                  background: 'none',
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  borderBottom: filterStatus === 'APPROVED' ? '2px solid var(--gold-primary)' : '2px solid transparent',
+                  color: filterStatus === 'APPROVED' ? 'var(--gold-hover)' : 'var(--text-secondary)',
+                }}
+                onClick={() => { setFilterStatus('APPROVED'); setCurrentPage(1); }}
+              >
+                ✅ Approved ({approvedClaims.length})
+              </button>
+              <button
+                type="button"
+                style={{
+                  padding: '10px 14px',
+                  border: 'none',
+                  background: 'none',
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  borderBottom: filterStatus === 'CORRECTION' ? '2px solid var(--gold-primary)' : '2px solid transparent',
+                  color: filterStatus === 'CORRECTION' ? 'var(--gold-hover)' : 'var(--text-secondary)',
+                }}
+                onClick={() => { setFilterStatus('CORRECTION'); setCurrentPage(1); }}
+              >
+                ↺ Returned ({correctionClaims.length})
+              </button>
+              <button
+                type="button"
+                style={{
+                  padding: '10px 14px',
+                  border: 'none',
+                  background: 'none',
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  borderBottom: filterStatus === 'ALL' ? '2px solid var(--gold-primary)' : '2px solid transparent',
+                  color: filterStatus === 'ALL' ? 'var(--gold-hover)' : 'var(--text-secondary)',
+                }}
+                onClick={() => { setFilterStatus('ALL'); setCurrentPage(1); }}
+              >
+                All ({totalClaims})
+              </button>
+            </div>
 
-          {/* Search bar */}
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', gap: '8px' }}>
-            <input
-              type="text"
-              className="form-input"
-              style={{ flex: 1, padding: '6px 10px', fontSize: '0.8125rem' }}
-              placeholder="Search employee, merchant, or ID..."
-              value={filterText}
-              onChange={(e) => {
-                setFilterText(e.target.value);
-                setCurrentPage(1);
-              }}
-            />
-          </div>
+            {/* Search bar */}
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', gap: '8px' }}>
+              <input
+                type="text"
+                className="form-input"
+                style={{ flex: 1, padding: '6px 10px', fontSize: '0.8125rem' }}
+                placeholder="Search employee, merchant, or ID..."
+                value={filterText}
+                onChange={(e) => {
+                  setFilterText(e.target.value);
+                  setCurrentPage(1);
+                }}
+              />
+            </div>
 
-          {/* Queue Items List */}
-          <div style={{ maxHeight: '520px', overflowY: 'auto' }}>
-            {paginatedReceipts.length === 0 ? (
-              <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📂</div>
-                No expense receipts found matching criteria.
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {paginatedReceipts.map((r) => {
-                  const isSelected = selectedReceipt?.id === r.id;
-                  const st = r.workflow_state || r.workflowState || 'DRAFT';
-                  const amount = r.requestedAmount || r.totalAmount;
-                  const currency = r.currency || 'INR';
+            {/* Queue Items List */}
+            <div style={{ maxHeight: '560px', overflowY: 'auto' }}>
+              {paginatedReceipts.length === 0 ? (
+                <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📂</div>
+                  No expense receipts found matching criteria.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {paginatedReceipts.map((r) => {
+                    const isSelected = selectedReceipt?.id === r.id;
+                    const st = r.workflow_state || r.workflowState || 'DRAFT';
+                    const amount = r.requestedAmount || r.totalAmount;
+                    const currency = r.currency || 'INR';
 
-                  return (
-                    <div
-                      key={r.id}
-                      onClick={() => {
-                        setSelectedReceipt(r);
-                        if (onSelectReceipt) onSelectReceipt(r);
-                      }}
-                      style={{
-                        padding: '14px 18px',
-                        borderBottom: '1px solid var(--border-subtle)',
-                        backgroundColor: isSelected ? 'var(--gold-bg-subtle)' : '#ffffff',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        justifyContent: 'space-between',
-                        borderLeft: isSelected ? '4px solid var(--gold-primary)' : '4px solid transparent',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      <div style={{ minWidth: 0, flex: 1, paddingRight: '10px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.875rem' }}>
-                            {r.merchantName || r.original_filename || r.originalFilename || 'Voucher'}
-                          </span>
-                        </div>
-
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                          👤 <strong>{r.employeeName || 'Employee'}</strong> &bull; {r.employeeEmail}
-                        </div>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px', fontSize: '0.75rem' }}>
-                          {amount !== null && amount !== undefined ? (
-                            <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
-                              {currency} {Number(amount).toFixed(2)}
+                    return (
+                      <div
+                        key={r.id}
+                        onClick={() => {
+                          setSelectedReceipt(r);
+                          if (onSelectReceipt) onSelectReceipt(r);
+                        }}
+                        style={{
+                          padding: '14px 18px',
+                          borderBottom: '1px solid var(--border-subtle)',
+                          backgroundColor: isSelected ? 'var(--gold-bg-subtle)' : '#ffffff',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          justifyContent: 'space-between',
+                          borderLeft: isSelected ? '4px solid var(--gold-primary)' : '4px solid transparent',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <div style={{ minWidth: 0, flex: 1, paddingRight: '10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.875rem' }}>
+                              {r.merchantName || r.original_filename || r.originalFilename || 'Voucher'}
                             </span>
-                          ) : (
-                            <span style={{ color: 'var(--text-muted)' }}>Amount pending</span>
-                          )}
+                          </div>
 
-                          <span style={{ color: 'var(--text-muted)' }}>
-                            &bull; {new Date(r.created_at || r.createdAt).toLocaleDateString()}
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                            👤 <strong>{r.employeeName || 'Employee'}</strong> &bull; {r.employeeEmail}
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px', fontSize: '0.75rem' }}>
+                            {amount !== null && amount !== undefined ? (
+                              <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                                {currency} {Number(amount).toFixed(2)}
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)' }}>Amount pending</span>
+                            )}
+
+                            <span style={{ color: 'var(--text-muted)' }}>
+                              &bull; {new Date(r.created_at || r.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+                          <span
+                            className={`status-pill ${
+                              st === 'APPROVED'
+                                ? 'approved'
+                                : st === 'PENDING_APPROVAL'
+                                ? 'pending'
+                                : st === 'CORRECTION_REQUESTED'
+                                ? 'correction'
+                                : st === 'REJECTED'
+                                ? 'rejected'
+                                : 'draft'
+                            }`}
+                          >
+                            {st.replace('_', ' ')}
                           </span>
+
+                          {r.validationStatus && (
+                            <span
+                              style={{
+                                fontSize: '0.65rem',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                backgroundColor: r.validationStatus === 'PASSED' ? '#ecfdf5' : '#fffbeb',
+                                color: r.validationStatus === 'PASSED' ? '#065f46' : '#92400e',
+                                fontWeight: 600,
+                              }}
+                            >
+                              {r.validationStatus === 'PASSED' ? 'Policy Pass' : 'Policy Flag'}
+                            </span>
+                          )}
                         </div>
                       </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
-                        <span
-                          className={`status-pill ${
-                            st === 'APPROVED'
-                              ? 'approved'
-                              : st === 'PENDING_APPROVAL'
-                              ? 'pending'
-                              : st === 'CORRECTION_REQUESTED'
-                              ? 'correction'
-                              : st === 'REJECTED'
-                              ? 'rejected'
-                              : 'draft'
-                          }`}
-                        >
-                          {st.replace('_', ' ')}
-                        </span>
+            {/* Pagination Footer */}
+            {totalFiltered > 0 && (
+              <div
+                style={{
+                  padding: '10px 16px',
+                  borderTop: '1px solid var(--border-subtle)',
+                  background: '#f8fafc',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  fontSize: '0.75rem',
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                <span>
+                  Page {safePage} of {totalPages} ({totalFiltered} items)
+                </span>
 
-                        {r.validationStatus && (
-                          <span
-                            style={{
-                              fontSize: '0.65rem',
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                              backgroundColor: r.validationStatus === 'PASSED' ? '#ecfdf5' : '#fffbeb',
-                              color: r.validationStatus === 'PASSED' ? '#065f46' : '#92400e',
-                              fontWeight: 600,
-                            }}
-                          >
-                            {r.validationStatus === 'PASSED' ? 'Policy Pass' : 'Policy Flag'}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    style={{
+                      padding: '2px 6px',
+                      fontSize: '0.75rem',
+                      borderRadius: '4px',
+                      border: '1px solid var(--border-subtle)',
+                      background: '#ffffff',
+                    }}
+                  >
+                    <option value={5}>5 / page</option>
+                    <option value={10}>10 / page</option>
+                    <option value={20}>20 / page</option>
+                  </select>
+
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                    disabled={safePage <= 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  >
+                    ◀ Prev
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                    disabled={safePage >= totalPages}
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  >
+                    Next ▶
+                  </button>
+                </div>
               </div>
             )}
           </div>
-
-          {/* Pagination Footer */}
-          {totalFiltered > 0 && (
-            <div
-              style={{
-                padding: '10px 16px',
-                borderTop: '1px solid var(--border-subtle)',
-                background: '#f8fafc',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                fontSize: '0.75rem',
-                color: 'var(--text-secondary)',
-              }}
-            >
-              <span>
-                Page {safePage} of {totalPages} ({totalFiltered} items)
-              </span>
-
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                <select
-                  value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value));
-                    setCurrentPage(1);
-                  }}
-                  style={{
-                    padding: '2px 6px',
-                    fontSize: '0.75rem',
-                    borderRadius: '4px',
-                    border: '1px solid var(--border-subtle)',
-                    background: '#ffffff',
-                  }}
-                >
-                  <option value={5}>5 / page</option>
-                  <option value={10}>10 / page</option>
-                  <option value={20}>20 / page</option>
-                </select>
-
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  style={{ padding: '2px 8px', fontSize: '0.75rem' }}
-                  disabled={safePage <= 1}
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                >
-                  ◀ Prev
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  style={{ padding: '2px 8px', fontSize: '0.75rem' }}
-                  disabled={safePage >= totalPages}
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                >
-                  Next ▶
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
         )}
 
-        {/* Right Panel: Active Inspector */}
+        {/* Right Panel: Active Inspector (Takes all remaining space or full width) */}
         <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
-          {!showQueueSidebar && (
+          {focusMode && (
             <div style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: '#f8fafc', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
                 id="btn-show-manager-queue"
-                onClick={() => setShowQueueSidebar(true)}
+                onClick={() => setFocusMode(false)}
               >
                 📋 Show Approvals Queue ({totalFiltered} claims)
               </button>
@@ -491,12 +497,55 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
             </div>
           )}
           {selectedReceipt ? (
-            <ReceiptView
-              receipt={selectedReceipt}
-              authToken={authToken}
-              currentUser={currentUser}
-              onWorkflowUpdated={fetchPendingReceipts}
-            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* Header Navigation with Focus Mode Toggle */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  background: '#ffffff',
+                  padding: '10px 18px',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--border-subtle)',
+                  boxShadow: 'var(--shadow-xs)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {focusMode ? (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => setFocusMode(false)}
+                      style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      ◀ Show Approvals Queue
+                    </button>
+                  ) : (
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                      Manager Review Studio &bull; Inspecting claim by <strong>{selectedReceipt.employeeName || 'Employee'}</strong>
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => setFocusMode(!focusMode)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
+                  title={focusMode ? "Restore Side-by-Side Queue List" : "Expand to Fullscreen View"}
+                >
+                  {focusMode ? '◫ Show Queue (Split)' : '⛶ Full Focus Mode'}
+                </button>
+              </div>
+
+              <ReceiptView
+                receipt={selectedReceipt}
+                authToken={authToken}
+                currentUser={currentUser}
+                onWorkflowUpdated={fetchPendingReceipts}
+              />
+            </div>
           ) : (
             <div className="table-card" style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
               <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>🛡️</div>

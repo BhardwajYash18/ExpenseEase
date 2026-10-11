@@ -51,6 +51,8 @@ export default function ReceiptView({
   // OCR Raw text modal
   const [showRawOcr, setShowRawOcr] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [inspectorTab, setInspectorTab] = useState('split'); // 'split' | 'scan' | 'details'
+  const [showFullImageModal, setShowFullImageModal] = useState(false);
 
   // Authenticated Image File Preview States
   const [imageObjectUrl, setImageObjectUrl] = useState(null);
@@ -533,15 +535,17 @@ export default function ReceiptView({
               ➕ Add More Receipts
             </button>
           )}
-          <button
-            type="button"
-            className="btn btn-outline btn-sm"
-            style={{ color: '#ef4444', borderColor: '#fca5a5' }}
-            id="delete-receipt-header-btn"
-            onClick={() => setShowDeleteConfirm(true)}
-          >
-            🗑️ Delete Request
-          </button>
+          {isSubmitter && (currentState === 'DRAFT' || currentState === 'CORRECTION_REQUESTED') && (
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              style={{ color: '#ef4444', borderColor: '#fca5a5' }}
+              id="delete-receipt-header-btn"
+              onClick={() => setShowDeleteConfirm(true)}
+            >
+              🗑️ Delete Request
+            </button>
+          )}
           <button
             type="button"
             className="btn btn-outline btn-sm"
@@ -564,177 +568,328 @@ export default function ReceiptView({
         </div>
       </div>
 
-      {/* Prominent Expense Claim Submission Bar */}
-      <div
-        className="table-card"
-        id="claim-submission-banner"
-        style={{
-          padding: '20px 24px',
-          background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-          color: '#ffffff',
-          borderRadius: 'var(--radius-lg)',
-          border: '1px solid #334155',
-          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.2)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '20px',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', minWidth: '280px' }}>
-          <div
-            style={{
-              width: '52px',
-              height: '52px',
-              borderRadius: 'var(--radius-md)',
-              background: 'linear-gradient(135deg, var(--gold-primary) 0%, var(--gold-hover) 100%)',
-              color: '#0f172a',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '1.75rem',
-              fontWeight: 800,
-              boxShadow: '0 4px 12px rgba(217, 119, 6, 0.35)',
-              flexShrink: 0,
-            }}
-          >
-            💰
+      {/* Prominent Expense Claim Submission Bar for Employees/Submitters */}
+      {!isManager && (
+        <div
+          className="table-card"
+          id="claim-submission-banner"
+          style={{
+            padding: '20px 24px',
+            background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+            color: '#ffffff',
+            borderRadius: 'var(--radius-lg)',
+            border: '1px solid #334155',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '20px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', minWidth: '280px' }}>
+            <div
+              style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: 'var(--radius-md)',
+                background: 'linear-gradient(135deg, var(--gold-primary) 0%, var(--gold-hover) 100%)',
+                color: '#0f172a',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '1.75rem',
+                fontWeight: 800,
+                boxShadow: '0 4px 12px rgba(217, 119, 6, 0.35)',
+                flexShrink: 0,
+              }}
+            >
+              💰
+            </div>
+            <div>
+              <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8', fontWeight: 700 }}>
+                Recognized Expense Claim
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap', marginTop: '2px' }}>
+                <span style={{ fontSize: '1.4rem', fontWeight: 800, color: '#f8fafc' }}>
+                  {effective.merchantName || editForm.merchantName || 'Recognized Vendor'}
+                </span>
+                <span style={{ fontSize: '1.5rem', fontWeight: 800, color: '#fbbf24' }}>
+                  {effective.currency || editForm.currency || 'INR'}{' '}
+                  {effective.requestedAmount !== null && effective.requestedAmount !== undefined
+                    ? Number(effective.requestedAmount).toFixed(2)
+                    : effective.totalAmount !== null && effective.totalAmount !== undefined
+                    ? Number(effective.totalAmount).toFixed(2)
+                    : editForm.requestedAmount !== '' && editForm.requestedAmount !== undefined
+                    ? Number(editForm.requestedAmount).toFixed(2)
+                    : editForm.totalAmount !== '' && editForm.totalAmount !== undefined
+                    ? Number(editForm.totalAmount).toFixed(2)
+                    : '0.00'}
+                </span>
+              </div>
+              <div style={{ fontSize: '0.8125rem', color: '#cbd5e1', marginTop: '4px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                <span>📅 {effective.receiptDate || editForm.receiptDate || 'Date: N/A'}</span>
+                <span>🏷️ {effective.category || editForm.category || 'Other'}</span>
+                {effective.taxAmount !== null && effective.taxAmount !== undefined && (
+                  <span style={{ color: '#94a3b8' }}>Tax: {Number(effective.taxAmount).toFixed(2)}</span>
+                )}
+              </div>
+            </div>
           </div>
-          <div>
-            <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8', fontWeight: 700 }}>
-              Recognized Expense Claim
-            </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap', marginTop: '2px' }}>
-              <span style={{ fontSize: '1.4rem', fontWeight: 800, color: '#f8fafc' }}>
-                {effective.merchantName || editForm.merchantName || 'Recognized Vendor'}
-              </span>
-              <span style={{ fontSize: '1.5rem', fontWeight: 800, color: '#fbbf24' }}>
-                {effective.currency || editForm.currency || 'INR'}{' '}
-                {effective.requestedAmount !== null && effective.requestedAmount !== undefined
-                  ? Number(effective.requestedAmount).toFixed(2)
-                  : effective.totalAmount !== null && effective.totalAmount !== undefined
-                  ? Number(effective.totalAmount).toFixed(2)
-                  : editForm.requestedAmount !== '' && editForm.requestedAmount !== undefined
-                  ? Number(editForm.requestedAmount).toFixed(2)
-                  : editForm.totalAmount !== '' && editForm.totalAmount !== undefined
-                  ? Number(editForm.totalAmount).toFixed(2)
-                  : '0.00'}
-              </span>
-            </div>
-            <div style={{ fontSize: '0.8125rem', color: '#cbd5e1', marginTop: '4px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-              <span>📅 {effective.receiptDate || editForm.receiptDate || 'Date: N/A'}</span>
-              <span>🏷️ {effective.category || editForm.category || 'Other'}</span>
-              {effective.taxAmount !== null && effective.taxAmount !== undefined && (
-                <span style={{ color: '#94a3b8' }}>Tax: {Number(effective.taxAmount).toFixed(2)}</span>
-              )}
-            </div>
-          </div>
-        </div>
 
-        {/* Claim Action Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          {isSubmitter && (currentState === 'DRAFT' || currentState === 'CORRECTION_REQUESTED') ? (
-            <>
-              {!isEditing && (
+          {/* Claim Action Buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            {isSubmitter && (currentState === 'DRAFT' || currentState === 'CORRECTION_REQUESTED') ? (
+              <>
+                {!isEditing && (
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-md"
+                    id="btn-banner-edit-claim"
+                    style={{ color: '#f8fafc', borderColor: '#475569', background: 'rgba(255, 255, 255, 0.05)' }}
+                    onClick={() => {
+                      initEditForm(extraction);
+                      setIsEditing(true);
+                    }}
+                  >
+                    ✏️ Adjust Name / Amount
+                  </button>
+                )}
                 <button
                   type="button"
-                  className="btn btn-outline btn-md"
-                  id="btn-banner-edit-claim"
-                  style={{ color: '#f8fafc', borderColor: '#475569', background: 'rgba(255, 255, 255, 0.05)' }}
-                  onClick={() => {
-                    initEditForm(extraction);
-                    setIsEditing(true);
+                  className="btn btn-gold btn-lg"
+                  id="btn-banner-submit-claim"
+                  style={{
+                    fontWeight: 700,
+                    fontSize: '1rem',
+                    padding: '12px 24px',
+                    boxShadow: '0 4px 14px rgba(217, 119, 6, 0.4)',
                   }}
+                  onClick={() => handleWorkflowAction('SUBMIT')}
+                  disabled={actionLoading}
                 >
-                  ✏️ Adjust Name / Amount
+                  {actionLoading
+                    ? '⏳ Submitting Claim...'
+                    : currentState === 'CORRECTION_REQUESTED'
+                    ? '🚀 Resubmit Expense Claim'
+                    : '🚀 Submit Expense Claim'}
                 </button>
-              )}
-              <button
-                type="button"
-                className="btn btn-gold btn-lg"
-                id="btn-banner-submit-claim"
-                style={{
-                  fontWeight: 700,
-                  fontSize: '1rem',
-                  padding: '12px 24px',
-                  boxShadow: '0 4px 14px rgba(217, 119, 6, 0.4)',
-                }}
-                onClick={() => handleWorkflowAction('SUBMIT')}
-                disabled={actionLoading}
-              >
-                {actionLoading
-                  ? '⏳ Submitting Claim...'
-                  : currentState === 'CORRECTION_REQUESTED'
-                  ? '🚀 Resubmit Expense Claim'
-                  : '🚀 Submit Expense Claim'}
-              </button>
-            </>
-          ) : isManager && currentState === 'PENDING_APPROVAL' ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                className="btn btn-gold btn-md"
-                id="btn-manager-approve-top"
-                style={{ fontWeight: 700, padding: '10px 18px', background: '#10b981', borderColor: '#059669', color: '#fff' }}
-                onClick={() => setReasonModal({ type: 'APPROVE', reason: '' })}
-                disabled={actionLoading}
-              >
-                ✅ Approve Claim
-              </button>
-              <button
-                type="button"
-                className="btn btn-outline btn-md"
-                id="btn-manager-correct-top"
-                style={{ color: '#f59e0b', borderColor: '#d97706', background: 'rgba(245, 158, 11, 0.1)', padding: '10px 16px' }}
-                onClick={() => setReasonModal({ type: 'REQUEST_CORRECTION', reason: '' })}
-                disabled={actionLoading}
-              >
-                ↺ Request Correction
-              </button>
-              <button
-                type="button"
-                className="btn btn-outline btn-md"
-                id="btn-manager-reject-top"
-                style={{ color: '#ef4444', borderColor: '#dc2626', background: 'rgba(239, 68, 68, 0.1)', padding: '10px 16px' }}
-                onClick={() => setReasonModal({ type: 'REJECT', reason: '' })}
-                disabled={actionLoading}
-              >
-                ❌ Reject Claim
-              </button>
-            </div>
-          ) : currentState === 'PENDING_APPROVAL' ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '10px 16px', borderRadius: 'var(--radius-md)' }}>
-              <span style={{ fontSize: '1.25rem' }}>⏳</span>
-              <div>
-                <div style={{ fontWeight: 700, color: '#93c5fd', fontSize: '0.875rem' }}>Claim Submitted</div>
-                <div style={{ fontSize: '0.75rem', color: '#bfdbfe' }}>Queued for Manager review & approval</div>
+              </>
+            ) : currentState === 'PENDING_APPROVAL' ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '10px 16px', borderRadius: 'var(--radius-md)' }}>
+                <span style={{ fontSize: '1.25rem' }}>⏳</span>
+                <div>
+                  <div style={{ fontWeight: 700, color: '#93c5fd', fontSize: '0.875rem' }}>Claim Submitted</div>
+                  <div style={{ fontSize: '0.75rem', color: '#bfdbfe' }}>Queued for Manager review &amp; approval</div>
+                </div>
               </div>
-            </div>
-          ) : currentState === 'APPROVED' ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '10px 16px', borderRadius: 'var(--radius-md)' }}>
-              <span style={{ fontSize: '1.25rem' }}>✅</span>
-              <div>
-                <div style={{ fontWeight: 700, color: '#6ee7b7', fontSize: '0.875rem' }}>Claim Approved</div>
-                <div style={{ fontSize: '0.75rem', color: '#a7f3d0' }}>Ready for Finance Batch processing</div>
+            ) : currentState === 'APPROVED' ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '10px 16px', borderRadius: 'var(--radius-md)' }}>
+                <span style={{ fontSize: '1.25rem' }}>✅</span>
+                <div>
+                  <div style={{ fontWeight: 700, color: '#6ee7b7', fontSize: '0.875rem' }}>Claim Approved</div>
+                  <div style={{ fontSize: '0.75rem', color: '#a7f3d0' }}>Ready for Finance Batch processing</div>
+                </div>
               </div>
-            </div>
-          ) : currentState === 'REJECTED' ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '10px 16px', borderRadius: 'var(--radius-md)' }}>
-              <span style={{ fontSize: '1.25rem' }}>❌</span>
-              <div>
-                <div style={{ fontWeight: 700, color: '#fca5a5', fontSize: '0.875rem' }}>Claim Rejected</div>
-                <div style={{ fontSize: '0.75rem', color: '#fecaca' }}>Check audit log for reason</div>
+            ) : currentState === 'REJECTED' ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '10px 16px', borderRadius: 'var(--radius-md)' }}>
+                <span style={{ fontSize: '1.25rem' }}>❌</span>
+                <div>
+                  <div style={{ fontWeight: 700, color: '#fca5a5', fontSize: '0.875rem' }}>Claim Rejected</div>
+                  <div style={{ fontSize: '0.75rem', color: '#fecaca' }}>Check audit log for reason</div>
+                </div>
               </div>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
+      )}
+
+      {/* Top Manager Review & Decision Bar (Prominent, Uncompressed, Right at the Top) */}
+      {isManager && (
+        <div
+          className="table-card"
+          id="manager-decision-bar"
+          style={{
+            padding: '18px 24px',
+            background: '#ffffff',
+            border: currentState === 'PENDING_APPROVAL' ? '2px solid var(--gold-primary)' : '1px solid var(--border-subtle)',
+            boxShadow: currentState === 'PENDING_APPROVAL' ? '0 4px 16px rgba(229, 169, 59, 0.15)' : 'var(--shadow-xs)',
+            borderRadius: 'var(--radius-lg)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div style={{ minWidth: '220px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '1.25rem' }}>🛡️</span>
+                <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Manager Review &amp; Decision Bar
+                </h4>
+                <span className={`status-pill ${getStatusClass(currentState)}`}>
+                  {currentState.replace('_', ' ')}
+                </span>
+              </div>
+              <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                Claimant: 👤 <strong>{receipt.employeeName || 'Employee'}</strong> &bull; {receipt.employeeEmail || ''}
+              </div>
+            </div>
+
+            {/* Financial Comparison Highlights */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', background: '#f8fafc', padding: '10px 18px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+              <div>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>Slip Total</span>
+                <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  {effective.currency || 'INR'} {effective.totalAmount !== null && effective.totalAmount !== undefined ? Number(effective.totalAmount).toFixed(2) : '0.00'}
+                </span>
+              </div>
+              <div style={{ width: '1px', height: '28px', background: 'var(--border-subtle)' }}></div>
+              <div>
+                <span style={{ fontSize: '0.7rem', color: 'var(--gold-hover)', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>★ Claimed Reimbursement</span>
+                <span style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--gold-hover)', fontFamily: 'var(--font-display)' }}>
+                  {effective.currency || 'INR'} {effective.requestedAmount !== null && effective.requestedAmount !== undefined ? Number(effective.requestedAmount).toFixed(2) : (effective.totalAmount !== null && effective.totalAmount !== undefined ? Number(effective.totalAmount).toFixed(2) : '0.00')}
+                </span>
+              </div>
+            </div>
+
+            {/* Prominent, Uncompressed Decision Buttons for PENDING_APPROVAL */}
+            {currentState === 'PENDING_APPROVAL' && (
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-gold btn-md"
+                  id="btn-manager-approve-top"
+                  style={{ padding: '10px 22px', fontWeight: 700, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 8px rgba(229,169,59,0.35)' }}
+                  onClick={() => setReasonModal({ type: 'APPROVE', reason: '' })}
+                  disabled={actionLoading}
+                >
+                  <span>✓</span> Approve Claim
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-warning btn-md"
+                  id="btn-manager-correct-top"
+                  style={{ padding: '10px 18px', fontWeight: 600, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  onClick={() => setReasonModal({ type: 'REQUEST_CORRECTION', reason: '' })}
+                  disabled={actionLoading}
+                >
+                  <span>↺</span> Request Correction
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-md"
+                  id="btn-manager-reject-top"
+                  style={{ padding: '10px 18px', fontWeight: 600, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  onClick={() => setReasonModal({ type: 'REJECT', reason: '' })}
+                  disabled={actionLoading}
+                >
+                  <span>✕</span> Reject
+                </button>
+              </div>
+            )}
+
+            {currentState === 'DRAFT' && (
+              <div style={{ padding: '8px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 'var(--radius-md)', color: '#1e40af', fontSize: '0.85rem' }}>
+                ⏳ <strong>DRAFT:</strong> Submitter has not submitted this voucher yet. Approval options will unlock once submitted.
+              </div>
+            )}
+
+            {currentState === 'APPROVED' && (
+              <div style={{ padding: '8px 18px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 'var(--radius-md)', color: '#065f46', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>✅</span> Claim Approved by Manager &bull; Queued for Finance Processing
+              </div>
+            )}
+
+            {currentState === 'CORRECTION_REQUESTED' && (
+              <div style={{ padding: '8px 18px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 'var(--radius-md)', color: '#92400e', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>↺</span> Returned to Employee for Correction &bull; Awaiting Resubmission
+              </div>
+            )}
+
+            {currentState === 'REJECTED' && (
+              <div style={{ padding: '8px 18px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 'var(--radius-md)', color: '#991b1b', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>❌</span> Claim Rejected by Manager
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Inspector View Mode Tabs */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#ffffff', padding: '6px 14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-xs)', flexWrap: 'wrap', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button
+            type="button"
+            style={{
+              padding: '7px 14px',
+              borderRadius: 'var(--radius-sm)',
+              border: 'none',
+              background: inspectorTab === 'split' ? 'var(--gold-bg-subtle)' : 'transparent',
+              color: inspectorTab === 'split' ? 'var(--gold-hover)' : 'var(--text-secondary)',
+              fontWeight: inspectorTab === 'split' ? 700 : 500,
+              fontSize: '0.8125rem',
+              cursor: 'pointer',
+            }}
+            onClick={() => setInspectorTab('split')}
+          >
+            ◫ Side-by-Side Review
+          </button>
+          <button
+            type="button"
+            style={{
+              padding: '7px 14px',
+              borderRadius: 'var(--radius-sm)',
+              border: 'none',
+              background: inspectorTab === 'scan' ? 'var(--gold-bg-subtle)' : 'transparent',
+              color: inspectorTab === 'scan' ? 'var(--gold-hover)' : 'var(--text-secondary)',
+              fontWeight: inspectorTab === 'scan' ? 700 : 500,
+              fontSize: '0.8125rem',
+              cursor: 'pointer',
+            }}
+            onClick={() => setInspectorTab('scan')}
+          >
+            📷 Full Document Scan
+          </button>
+          <button
+            type="button"
+            style={{
+              padding: '7px 14px',
+              borderRadius: 'var(--radius-sm)',
+              border: 'none',
+              background: inspectorTab === 'details' ? 'var(--gold-bg-subtle)' : 'transparent',
+              color: inspectorTab === 'details' ? 'var(--gold-hover)' : 'var(--text-secondary)',
+              fontWeight: inspectorTab === 'details' ? 700 : 500,
+              fontSize: '0.8125rem',
+              cursor: 'pointer',
+            }}
+            onClick={() => setInspectorTab('details')}
+          >
+            📋 Extracted Data &amp; Policy
+          </button>
+        </div>
+
+        <button
+          type="button"
+          className="btn btn-outline btn-sm"
+          onClick={() => setShowFullImageModal(true)}
+          style={{ fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}
+          title="Open full resolution photo in modal overlay"
+        >
+          🔍 Enlarge Receipt Image
+        </button>
       </div>
 
       {/* Main Split Inspection View (Stitch Screen 2 & Screen 3) */}
-      <div className="split-view-container">
+      <div
+        className="split-view-container"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: inspectorTab === 'split' ? 'repeat(auto-fit, minmax(360px, 1fr))' : '1fr',
+          gap: '20px',
+          alignItems: 'start',
+        }}
+      >
         {/* Left Panel: Physical Scan View */}
-        <div className="split-panel">
+        {(inspectorTab === 'split' || inspectorTab === 'scan') && (
+          <div className="split-panel">
           <div className="split-panel-header">
             <span className="split-panel-title">Physical Scan View</span>
             <div style={{ display: 'flex', gap: '6px' }}>
@@ -858,6 +1013,14 @@ export default function ReceiptView({
                 >
                   Reset
                 </button>
+                <button
+                  type="button"
+                  className="scan-control-btn"
+                  title="Open Full Resolution Modal"
+                  onClick={() => setShowFullImageModal(true)}
+                >
+                  ⛶ Full
+                </button>
               </div>
             </div>
 
@@ -877,32 +1040,34 @@ export default function ReceiptView({
             </div>
           </div>
         </div>
+        )}
 
         {/* Right Panel: OCR Extracted Details & Policy Validation */}
-        <div className="split-panel">
-          <div className="split-panel-header">
-            <span className="split-panel-title">OCR Extracted Details</span>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              {extraction && (
-                <span className="status-pill policy-pass">
-                  <span className="status-dot"></span>
-                  <span>AI Confidence: {Math.round((extraction.aiData?.confidenceScore || 0.92) * 100)}%</span>
-                </span>
-              )}
-              {!isEditing && (
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  onClick={() => {
-                    initEditForm(extraction);
-                    setIsEditing(true);
-                  }}
-                >
-                  ✏️ {extraction ? 'Edit Details & Claim' : 'Enter Details Manually'}
-                </button>
-              )}
+        {(inspectorTab === 'split' || inspectorTab === 'details') && (
+          <div className="split-panel">
+            <div className="split-panel-header">
+              <span className="split-panel-title">OCR Extracted Details</span>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {extraction && (
+                  <span className="status-pill policy-pass">
+                    <span className="status-dot"></span>
+                    <span>AI Confidence: {Math.round((extraction.aiData?.confidenceScore || 0.92) * 100)}%</span>
+                  </span>
+                )}
+                {canEditDetails && !isEditing && (
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => {
+                      initEditForm(extraction);
+                      setIsEditing(true);
+                    }}
+                  >
+                    ✏️ {extraction ? 'Edit Details & Claim' : 'Enter Details Manually'}
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
 
           <div className="split-panel-body">
             {extractError && (
@@ -994,7 +1159,7 @@ export default function ReceiptView({
                 </div>
 
                 {/* Financial Summary: Receipt Total vs Requested Reimbursement Amount */}
-                <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', display: 'grid', gridTemplateColumns: '1fr 1.2fr 1fr', gap: '12px', alignItems: 'center' }}>
+                <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', alignItems: 'center' }}>
                   <div className="form-group">
                     <span className="form-label">Receipt Slip Total</span>
                     <div style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--text-secondary)' }}>
@@ -1418,7 +1583,68 @@ export default function ReceiptView({
             </div>
           </div>
         </div>
+        )}
       </div>
+
+      {/* Full Resolution Receipt Image Modal */}
+      {showFullImageModal && (
+        <div
+          className="modal-overlay"
+          style={{ zIndex: 1100, backgroundColor: 'rgba(15, 23, 42, 0.85)' }}
+          onClick={() => setShowFullImageModal(false)}
+        >
+          <div
+            className="modal-dialog"
+            style={{ maxWidth: '95vw', width: '1000px', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header" style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h4 className="modal-title" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
+                  📷 Full Resolution Voucher Scan — {effective.merchantName || receipt.originalFilename || 'Receipt'}
+                </h4>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  {receipt.originalFilename || receipt.original_filename || 'Receipt Image'} &bull; {((receipt.fileSizeBytes || receipt.file_size_bytes || 0) / 1024).toFixed(1)} KB
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <a
+                  href={`/api/receipts/${receipt.id}/file?token=${encodeURIComponent(authToken)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn btn-outline btn-sm"
+                  style={{ fontSize: '0.75rem' }}
+                >
+                  Open in New Tab ↗
+                </a>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => setShowFullImageModal(false)}
+                  style={{ fontWeight: 'bold' }}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            <div className="modal-body" style={{ flex: 1, overflow: 'auto', textAlign: 'center', background: '#0b0f19', padding: '20px', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+              <img
+                src={imageObjectUrl || `/api/receipts/${receipt.id}/file?token=${encodeURIComponent(authToken)}`}
+                alt="Full High Resolution Receipt Preview"
+                style={{ maxWidth: '100%', maxHeight: '78vh', objectFit: 'contain', borderRadius: '4px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}
+              />
+            </div>
+            <div className="modal-footer" style={{ padding: '12px 20px', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Tip: Click outside or press close to return to the approval workspace.
+              </span>
+              <button type="button" className="btn btn-dark btn-sm" onClick={() => setShowFullImageModal(false)}>
+                Close Preview
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Raw OCR Text Modal */}
       {showRawOcr && (
