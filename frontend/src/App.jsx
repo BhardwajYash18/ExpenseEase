@@ -4,6 +4,7 @@ import ReceiptView from './components/ReceiptView';
 import ManagerApprovalsView from './components/ManagerApprovalsView';
 import FinanceBatchView from './components/FinanceBatchView';
 import JournalEntryView from './components/JournalEntryView';
+import ErrorBoundary from './components/ErrorBoundary';
 import { IS_DEMO_MODE, DEMO_ACCOUNTS } from './config/demoConfig';
 
 function App() {
@@ -577,7 +578,7 @@ function App() {
               </div>
             </div>
           ) : (
-            <>
+            <ErrorBoundary onReset={() => setActiveNav('dashboard')}>
               {/* VIEW 1: DASHBOARD (Stitch Screen 1: Employee Receipt Submission) */}
               {activeNav === 'dashboard' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -1023,7 +1024,7 @@ function App() {
                   </div>
                 </div>
               )}
-            </>
+            </ErrorBoundary>
           )}
         </main>
       </div>

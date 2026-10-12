@@ -509,7 +509,7 @@ export default function ReceiptView({
               </span>
             </div>
             <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-              Voucher ID: <code style={{ color: 'var(--text-primary)' }}>{receipt.id.slice(0, 13)}...</code> &bull; Uploaded: {new Date(receipt.createdAt || receipt.created_at).toLocaleDateString()}
+              Voucher ID: <code style={{ color: 'var(--text-primary)' }}>{(receipt?.id || '').slice(0, 13)}...</code> &bull; Uploaded: {receipt?.createdAt || receipt?.created_at ? new Date(receipt.createdAt || receipt.created_at).toLocaleDateString() : '—'}
             </p>
           </div>
         </div>
@@ -1134,7 +1134,7 @@ export default function ReceiptView({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div className="form-grid-2">
                   <div className="form-group">
-                    <span className="form-label">Merchant / Payee Name</span>
+                    <span className="form-label">Name / Merchant / Payee</span>
                     <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{effective.merchantName || '—'}</div>
                   </div>
                   <div className="form-group">
@@ -1161,7 +1161,7 @@ export default function ReceiptView({
                 {/* Financial Summary: Receipt Total vs Requested Reimbursement Amount */}
                 <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', alignItems: 'center' }}>
                   <div className="form-group">
-                    <span className="form-label">Receipt Slip Total</span>
+                    <span className="form-label">Total Amount / MRP</span>
                     <div style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--text-secondary)' }}>
                       {effective.currency || 'INR'} {Number(effective.totalAmount || 0).toFixed(2)}
                     </div>
@@ -1239,13 +1239,13 @@ export default function ReceiptView({
 
                 <div className="form-grid-2">
                   <div className="form-group">
-                    <label className="form-label">Merchant / Vendor Name</label>
+                    <label className="form-label">Name / Merchant / Vendor</label>
                     <input
                       type="text"
                       className="form-input"
                       value={editForm.merchantName}
                       onChange={(e) => setEditForm({ ...editForm, merchantName: e.target.value })}
-                      placeholder="e.g. The Urban Brew Café"
+                      placeholder="e.g. Rahul Sharma or The Urban Brew Café"
                       required
                     />
                   </div>
@@ -1301,7 +1301,7 @@ export default function ReceiptView({
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1fr', gap: '10px', background: '#f8fafc', padding: '14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
                   <div className="form-group">
-                    <label className="form-label">Receipt Slip Total</label>
+                    <label className="form-label">Total Amount / MRP</label>
                     <input
                       type="number"
                       step="0.01"
@@ -1321,7 +1321,7 @@ export default function ReceiptView({
                       required
                     />
                     <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginTop: '3px' }}>
-                      Exact total on receipt slip
+                      Exact total or MRP on receipt slip
                     </span>
                   </div>
                   <div className="form-group">

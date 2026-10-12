@@ -93,3 +93,27 @@ def test_ocr_extract_endpoint_empty_file():
 
     assert response.status_code == 400
     assert "empty" in response.json()["detail"].lower()
+
+
+def test_detect_and_warp_receipt_synthetic():
+    """Verify receipt contour detection and perspective warping on rotated receipt image."""
+    import cv2
+    import numpy as np
+    from app.processors.image_preprocessor import detect_and_warp_receipt, bw_scanner
+
+    # Create synthetic dark background with a rotated white receipt rectangle
+    canvas = np.full((800, 600, 3), 30, dtype=np.uint8)
+    pts = np.array([[80, 80], [520, 100], [480, 720], [70, 700]], dtype=np.int32)
+    cv2.fillPoly(canvas, [pts], (240, 240, 240))
+    cv2.putText(canvas, "SAMPLE RECEIPT", (120, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
+
+    warped, detected = detect_and_warp_receipt(canvas)
+    assert detected is True
+    assert warped.shape[0] > 400
+    assert warped.shape[1] > 200
+
+    scanned = bw_scanner(warped)
+    assert scanned.shape[:2] == warped.shape[:2]
+    unique_vals = np.unique(scanned)
+    assert 255 in unique_vals and 0 in unique_vals
+

@@ -81,58 +81,82 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
             "staples", "office depot", "officemax"
         ]
 
-        # 1. Merchant / Payee / Expense Name Extraction
+        # 1. Name / Merchant / Payee Extraction
         merchant_name: Optional[str] = None
         merchant_confidence = 0.0
 
         stop_meta_words = {
-            'age', 'dob', 'date', 'dr', 'doctor', 'mr', 'mrs', 'ms', 'shri', 'smt',
-            'male', 'female', 'gender', 'sex', 'phone', 'ph', 'tel', 'mobile',
-            'address', 'addr', 'city', 'pin', 'pincode', 'bill', 'receipt', 'tax',
-            'dept', 'department', 'room', 'bed', 'reg', 'regn', 'id', 'no', 'num',
-            'yr', 'yrs', 'years', 'total', 'amt', 'amount', 'rs', 'inr', 'usd'
+            'age', 'dob', 'date', 'dt', 'dated', 'time', 'am', 'pm', 'dr', 'doctor', 'mr', 'mrs', 'ms', 'shri', 'smt',
+            'prof', 'master', 'miss', 'male', 'female', 'gender', 'sex', 'phone', 'ph', 'tel', 'mob', 'mobile', 'cell',
+            'contact', 'email', 'mail', 'address', 'addr', 'city', 'state', 'pin', 'pincode', 'zip', 'street', 'road',
+            'bill', 'receipt', 'tax', 'gst', 'gstin', 'vat', 'cgst', 'sgst', 'igst', 'inv', 'invoice', 'memo',
+            'dept', 'department', 'room', 'bed', 'ward', 'uhid', 'ipd', 'opd', 'consultant', 'reg', 'regn', 'id', 'no',
+            'num', 'number', 'aadhaar', 'pan', 'uid', 'card', 'ref', 'reference', 'yr', 'yrs', 'years', 'y',
+            'total', 'amt', 'amount', 'mrp', 'rs', 'inr', 'usd', 'eur', 'gbp', 'balance', 'bal', 'due', 'paid', 'net',
+            'subtotal', 'cash', 'card', 'upi', 'paytm', 'gpay', 'phonepe', 'name', 'patient', 'customer', 'client', 'employee'
         }
 
-        # Step 1a: Check if any of the top lines match known popular brands
-        for line in lines[:10]:
-            line_lower = line.lower()
-            for brand in known_brands:
-                if brand in line_lower:
-                    clean = re.sub(r'^(?:welcome\s+to\s+|thank\s+you\s+for\s+visiting\s+)', '', line, flags=re.I).strip()
-                    if len(clean) >= 3 and not any(re.search(pat, clean, re.I) for pat in header_noise_patterns):
-                        merchant_name = clean[:255]
-                    else:
-                        merchant_name = brand.title()
-                    merchant_confidence = 0.95
-                    break
-            if merchant_name:
-                break
+        name_label_regex = re.compile(
+            r'\b(?:(?:patient|customer|cust|client|employee|emp|staff|guest|pax|passenger|buyer|member|user|holder|cardholder|billed\s*to|bill\s*to|pt)\s*(?:[\'’]s)?\s*)?name(?:\s+of\s+(?:patient|customer|client|passenger|guest|buyer|employee|person))?\b\s*[:=\-]?\s*(.*)$',
+            re.I
+        )
+        honorifics_regex = re.compile(r'^(?:mr|mrs|ms|miss|dr|doctor|shri|smt|master|prof)\.?\s+', re.I)
 
-        # Step 1b: Scan for explicit Name label (e.g. "Name: Vivek Shah", "Patient Name: Vivek Shah")
-        # Specification: take words ONLY after the word 'name', exclude 'name' itself, and take at most three words.
-        if not merchant_name:
-            for idx, line in enumerate(lines[:12]):
-                if re.search(r'\bname\b', line, re.I):
-                    # Extract text strictly after the word 'name'
-                    after_name = re.sub(r'^.*?\bname\b\s*[:=\-]?\s*', '', line, flags=re.I).strip()
-                    if not after_name and idx + 1 < len(lines):
-                        after_name = lines[idx + 1].strip()
+        # Step 1a: Explicit Name label scan (e.g. "Patient Name: Vivek Kumar Shah Age: 28", "Customer Name: Rahul Sharma")
+        # Rule: Name is written only after "name" or something similar, strictly 2 to 3 words long, without extraneous data near it.
+        for idx, line in enumerate(lines):
+            match = name_label_regex.search(line)
+            if match:
+                raw_tail = match.group(1).strip()
+                # If name is on next line
+                if not raw_tail and idx + 1 < len(lines):
+                    next_l = lines[idx + 1].strip()
+                    if not name_label_regex.search(next_l) and not re.search(r'^(?:date|age|sex|gender|phone|ph|address|total|mrp|tax|inv)\b', next_l, re.I):
+                        raw_tail = next_l
 
-                    if after_name:
-                        after_name = re.sub(r'^[=\-:\s\'"]+', '', after_name).strip()
-                        tokens = re.findall(r'[A-Za-z]+(?:\'[A-Za-z]+)?', after_name)
-                        selected_words = []
-                        for token in tokens:
-                            token_lower = token.lower()
-                            if token_lower == 'name' or token_lower in stop_meta_words:
-                                break
-                            selected_words.append(token)
-                            if len(selected_words) == 3:
-                                break
-                        if selected_words:
-                            merchant_name = " ".join(selected_words)
-                            merchant_confidence = 0.95
+                if raw_tail:
+                    # Strip leading punctuation and noise
+                    raw_tail = re.sub(r'^[=\-:\s\'"|/]+', '', raw_tail).strip()
+                    # Truncate at delimiters that separate fields (comma, pipe, semicolon, brackets, colon)
+                    raw_tail = re.split(r'[,|;(\[\\]', raw_tail)[0].strip()
+                    # Strip title honorifics
+                    raw_tail = honorifics_regex.sub('', raw_tail).strip()
+
+                    tokens = re.findall(r'[A-Za-z]+(?:\'[A-Za-z]+)?', raw_tail)
+                    name_words = []
+                    for token in tokens:
+                        tok_lower = token.lower()
+                        if tok_lower in stop_meta_words:
                             break
+                        if len(token) >= 2 or (len(token) == 1 and token.isupper()):
+                            name_words.append(token)
+                        if len(name_words) == 3:
+                            break
+
+                    # Enforce length: name can only be two to three words long
+                    if len(name_words) in [2, 3]:
+                        merchant_name = " ".join(name_words).title()
+                        merchant_confidence = 0.98
+                        break
+                    elif len(name_words) == 1 and not merchant_name:
+                        merchant_name = name_words[0].title()
+                        merchant_confidence = 0.85
+
+        # Step 1b: Check known popular retail brands (if no explicit person name was found)
+        if not merchant_name:
+            for line in lines[:10]:
+                line_lower = line.lower()
+                for brand in known_brands:
+                    if brand in line_lower:
+                        clean = re.sub(r'^(?:welcome\s+to\s+|thank\s+you\s+for\s+visiting\s+)', '', line, flags=re.I).strip()
+                        if len(clean) >= 3 and not any(re.search(pat, clean, re.I) for pat in header_noise_patterns):
+                            merchant_name = clean[:255]
+                        else:
+                            merchant_name = brand.title()
+                        merchant_confidence = 0.95
+                        break
+                if merchant_name:
+                    break
 
         # Step 1c: Check for explicit Merchant / Store / Vendor / Seller label
         if not merchant_name:
@@ -152,7 +176,7 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
                             merchant_confidence = 0.90
                             break
 
-        # Step 1d: Scan the top lines, rigorously filtering out invoice/tax/memo noise
+        # Step 1d: Scan the top lines, filtering out invoice/tax/memo noise
         if not merchant_name:
             for line in lines[:8]:
                 if any(re.search(pat, line, re.I) for pat in header_noise_patterns):
@@ -180,11 +204,10 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
                 merchant_name = lines[0][:255]
                 merchant_confidence = 0.40
 
-        # 2. Date Extraction (YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY, Mon DD YYYY, DD Mon YYYY, etc.)
+        # 2. Date Extraction (Comprehensive support for all date formats)
         receipt_date: Optional[date] = None
         date_confidence = 0.0
 
-        # Shared month name lookup (handles OCR artifacts like '0ct' for 'Oct')
         mon_map = {
             'jan': 1, 'january': 1, 'feb': 2, 'february': 2, 'mar': 3, 'march': 3,
             'apr': 4, 'april': 4, 'may': 5, 'jun': 6, 'june': 6, 'jul': 7, 'july': 7,
@@ -193,72 +216,92 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
             'nov': 11, 'november': 11, 'dec': 12, 'december': 12
         }
 
-        # Pattern 1: YYYY-MM-DD or YYYY/MM/DD (ISO format)
-        iso_match = re.search(r'\b(20\d\d)[-/](0[1-9]|1[0-2])[-/](0[1-9]|[12]\d|3[01])\b', cleaned_text)
-        if iso_match:
+        def _safe_build_date(y: int, m: int, d: int) -> Optional[date]:
+            if y < 100:
+                y += 2000 if y <= 50 else 1900
+            if not (2000 <= y <= 2035 and 1 <= m <= 12 and 1 <= d <= 31):
+                return None
             try:
-                receipt_date = datetime.strptime(f"{iso_match.group(1)}-{iso_match.group(2)}-{iso_match.group(3)}", "%Y-%m-%d").date()
-                date_confidence = 0.95
-            except ValueError:
-                pass
+                return date(y, m, d)
+            except Exception:
+                return None
 
-        # Pattern 2: MM/DD/YYYY (US format — first number is month 01-12)
-        if not receipt_date:
-            slash_match = re.search(r'\b(0[1-9]|1[0-2])/(0[1-9]|[12]\d|3[01])/(20\d\d)\b', cleaned_text)
-            if slash_match:
-                try:
-                    receipt_date = datetime.strptime(f"{slash_match.group(3)}-{slash_match.group(1)}-{slash_match.group(2)}", "%Y-%m-%d").date()
-                    date_confidence = 0.90
-                except ValueError:
-                    pass
+        is_indian_or_euro = bool(re.search(r'\b(INR|GST|GSTIN|CGST|SGST|IGST|Rs\.?|₹|India|EUR|GBP|€|£|UPI|Paytm)\b', cleaned_text, re.I))
 
-        # Pattern 3: DD/MM/YYYY where day > 12 (unambiguously DD/MM/YYYY, common in India/UK/EU)
-        if not receipt_date:
-            dd_mm_match = re.search(r'\b(1[3-9]|2\d|3[01])[-/](0[1-9]|1[0-2])[-/](20\d\d)\b', cleaned_text)
-            if dd_mm_match:
-                try:
-                    d_val = int(dd_mm_match.group(1))
-                    m_val = int(dd_mm_match.group(2))
-                    y_val = int(dd_mm_match.group(3))
-                    receipt_date = date(y_val, m_val, d_val)
-                    date_confidence = 0.88
-                except (ValueError, Exception):
-                    pass
+        def _parse_candidate_date(s: str) -> Optional[date]:
+            # Pattern A: Day Month Year with textual month (e.g. 12 Oct 2026, 12th October 2026, 12-Oct-26, 12.OCT.2026, 12/Oct/2026)
+            ma = re.search(r'\b([0-3]?\d)(?:st|nd|rd|th)?[\s\-_./]+([A-Za-z0]{3,9})[\s\-_./]+(20\d\d|\d{2})\b', s)
+            if ma:
+                d_val = int(ma.group(1))
+                m_clean = ma.group(2).lower().replace('0', 'o')
+                y_val = int(ma.group(3))
+                m_val = mon_map.get(m_clean)
+                if m_val:
+                    res = _safe_build_date(y_val, m_val, d_val)
+                    if res: return res
 
-        # Pattern 4: Mon DD, YYYY or Month DD, YYYY (e.g. "Oct 12, 2026", "October 12, 2026")
-        if not receipt_date:
-            mon_dd_match = re.search(
-                r'\b([A-Za-z]{3,9})[.,]?\s+(\d{1,2})[,.]?\s+(20\d\d)\b',
-                cleaned_text, re.I
-            )
-            if mon_dd_match:
-                m_str = mon_dd_match.group(1).lower()
-                d_val = int(mon_dd_match.group(2))
-                y_val = int(mon_dd_match.group(3))
-                m_num = mon_map.get(m_str)
-                if not m_num:
-                    m_str_clean = m_str.replace('0', 'o')
-                    m_num = mon_map.get(m_str_clean)
-                if m_num and 1 <= d_val <= 31:
-                    try:
-                        receipt_date = date(y_val, m_num, d_val)
-                        date_confidence = 0.90
-                    except (ValueError, Exception):
-                        pass
+            # Pattern B: Month Day Year with textual month (e.g. Oct 12, 2026, October 12th 2026, Oct 12 26)
+            mb = re.search(r'\b([A-Za-z0]{3,9})\.?\s+([0-3]?\d)(?:st|nd|rd|th)?[,\s\-_./]+(20\d\d|\d{2})\b', s)
+            if mb:
+                m_clean = mb.group(1).lower().replace('0', 'o')
+                d_val = int(mb.group(2))
+                y_val = int(mb.group(3))
+                m_val = mon_map.get(m_clean)
+                if m_val:
+                    res = _safe_build_date(y_val, m_val, d_val)
+                    if res: return res
 
-        # Pattern 5: DD Mon YYYY (e.g. "08 Oct 2026", "8 October 2026")
+            # Pattern C: ISO numeric: YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD
+            mc = re.search(r'\b(20\d\d)[-/.](0?[1-9]|1[0-2])[-/.](0?[1-9]|[12]\d|3[01])\b', s)
+            if mc:
+                res = _safe_build_date(int(mc.group(1)), int(mc.group(2)), int(mc.group(3)))
+                if res: return res
+
+            # Pattern D: Unambiguous DD/MM/YYYY or DD/MM/YY (where day > 12)
+            md = re.search(r'\b(1[3-9]|2\d|3[01])[-/.](0?[1-9]|1[0-2])[-/.](20\d\d|\d{2})\b', s)
+            if md:
+                res = _safe_build_date(int(md.group(3)), int(md.group(2)), int(md.group(1)))
+                if res: return res
+
+            # Pattern E: Unambiguous MM/DD/YYYY or MM/DD/YY (where month <= 12 and day > 12)
+            me = re.search(r'\b(0?[1-9]|1[0-2])[-/.](1[3-9]|2\d|3[01])[-/.](20\d\d|\d{2})\b', s)
+            if me:
+                res = _safe_build_date(int(me.group(3)), int(me.group(1)), int(me.group(2)))
+                if res: return res
+
+            # Pattern F: Ambiguous numeric dates: both numbers <= 12
+            mf = re.search(r'\b(0?[1-9]|1[0-2])([-/.])(0?[1-9]|1[0-2])\2(20\d\d|\d{2})\b', s)
+            if mf:
+                p1, sep, p2, yr = int(mf.group(1)), mf.group(2), int(mf.group(3)), int(mf.group(4))
+                # Dot (.) and dash (-) are standard DD.MM.YYYY / DD-MM-YYYY globally
+                if sep in ['.', '-'] or is_indian_or_euro:
+                    res = _safe_build_date(yr, p2, p1)
+                else:
+                    res = _safe_build_date(yr, p1, p2)
+                if res: return res
+
+            return None
+
+        # Priority 1: Check lines with explicit date labels (e.g. "Date: 12/10/2026", "Invoice Date: 12-10-26", "Dt: 12.10.2026")
+        date_label_pat = re.compile(
+            r'\b(?:invoice\s*date|bill\s*date|txn\s*date|transaction\s*date|receipt\s*date|sale\s*date|dated|date|dt)\b\s*[:=\-]?\s*(.*)$',
+            re.I
+        )
+        for line in lines:
+            dlm = date_label_pat.search(line)
+            if dlm:
+                parsed_d = _parse_candidate_date(dlm.group(1).strip())
+                if parsed_d:
+                    receipt_date = parsed_d
+                    date_confidence = 0.98
+                    break
+
+        # Priority 2: Scan full text if not matched by label
         if not receipt_date:
-            mon_match = re.search(r'\b([0-3]?\d)[\s\-_]+([A-Za-z0-9]{3,9})[\s\-_,]+(20\d\d)\b', cleaned_text)
-            if mon_match:
-                d_str, m_str, y_str = mon_match.group(1), mon_match.group(2).lower(), mon_match.group(3)
-                m_str_clean = m_str.replace('0', 'o')
-                m_num = mon_map.get(m_str) or mon_map.get(m_str_clean)
-                if m_num:
-                    try:
-                        receipt_date = date(int(y_str), m_num, int(d_str))
-                        date_confidence = 0.92
-                    except Exception:
-                        pass
+            parsed_d = _parse_candidate_date(cleaned_text)
+            if parsed_d:
+                receipt_date = parsed_d
+                date_confidence = 0.92
 
         # 3. Currency Detection
         currency = "USD"
@@ -271,50 +314,76 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
         elif "$" in cleaned_text or re.search(r'\bUSD\b', cleaned_text, re.I):
             currency = "USD"
 
-        # 4. Total Amount Extraction (Primary purpose: accurately find payable claim amount)
+        # 4. Total Amount / MRP Extraction (Ensures Total Amount & MRP are accurately captured)
         total_amount: Optional[Decimal] = None
         subtotal_amount: Optional[Decimal] = None
         tax_amount: Optional[Decimal] = None
         total_confidence = 0.0
 
         _currency_pat = r'(?:[\$\u20ac\u00a3\u20b9]|Rs\.?\s*|INR\s*|USD\s*|EUR\s*|GBP\s*)?'
-        # Includes common OCR label variations & typos: T0TAL, TOTAI, TOTL
+        _amount_num_pat = r'([0-9]{1,3}(?:,[0-9]{2,3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)(?:\s*/-)?\b'
+
+        _mrp_label = r'(?:M\s*\.?\s*R\s*\.?\s*P\s*\.?|MAXIMUM\s*RETAIL\s*PRICE|\bMRP\b)'
         _total_label = (
             r'\b(?:TOTAL\s*(?:AMOUNT)?|T[0O]TA[LI1]|T[0O]TL|GRAND\s*TOTAL|FINAL\s*(?:TOTAL|AMOUNT)|'
-            r'NET\s*(?:AMOUNT|PAYABLE|TOTAL)|AMOUNT\s*(?:DUE|PAYABLE|PAID)|BALANCE\s*DUE|BILL\s*AMOUNT|'
-            r'PAID\s*AMOUNT|AMOUNT|AMT)\b'
+            r'NET\s*(?:AMOUNT|PAYABLE|TOTAL|AMT|VALUE)|BILL\s*(?:AMOUNT|AMT|TOTAL)|'
+            r'INVOICE\s*(?:TOTAL|AMOUNT|AMT)|AMOUNT\s*(?:DUE|PAYABLE|PAID)|'
+            r'BALANCE\s*DUE|PAID\s*AMOUNT|TOTAL\s*PAYABLE|PAYABLE\s*AMOUNT|'
+            r'TOTAL\s*AMT|TOT\s*AMT|TTL\s*AMT|AMOUNT|AMT)\b'
         )
 
-        # Pass 1: Same-line Label + [Currency] + Amount (decimal or whole number, optional /-)
-        same_line_pat = (
-            _total_label +
-            r'\s*(?:\([^)]*\))?\s*[:=]?\s*' +
+        # Pass 1: Explicit MRP Label + Amount on the same line (e.g. "MRP: Rs. 450.00", "M.R.P. : 500/-", "MRP (Incl. taxes) : 250.00")
+        mrp_same_line_pat = (
+            _mrp_label +
+            r'(?:\s*\([^)]*\))?\s*[:=]?\s*' +
             _currency_pat +
-            r'\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)(?:\s*/-)?\b'
+            r'\s*' + _amount_num_pat
         )
-        matches = list(re.finditer(same_line_pat, cleaned_text, re.I))
-        if matches:
-            for m in reversed(matches):
+        mrp_matches = list(re.finditer(mrp_same_line_pat, cleaned_text, re.I))
+        if mrp_matches:
+            for m in reversed(mrp_matches):
                 raw_val = m.group(1).replace(',', '')
                 if not re.match(r'^20\d{2}$', raw_val):
                     try:
                         v = Decimal(raw_val)
                         if v > 0:
                             total_amount = v
-                            total_confidence = 0.95
+                            total_confidence = 0.98
                             break
                     except Exception:
                         pass
 
-        # Pass 2: Next-line split (Label on line 1, Amount on line 2)
+        # Pass 2: Explicit Total / Grand Total / Net Amount / Bill Amount on the same line
         if total_amount is None:
-            split_pat = (
+            total_same_line_pat = (
                 _total_label +
+                r'\s*(?:\([^)]*\))?\s*[:=]?\s*' +
+                _currency_pat +
+                r'\s*' + _amount_num_pat
+            )
+            total_matches = list(re.finditer(total_same_line_pat, cleaned_text, re.I))
+            if total_matches:
+                for m in reversed(total_matches):
+                    raw_val = m.group(1).replace(',', '')
+                    if not re.match(r'^20\d{2}$', raw_val):
+                        try:
+                            v = Decimal(raw_val)
+                            if v > 0:
+                                total_amount = v
+                                total_confidence = 0.95
+                                break
+                        except Exception:
+                            pass
+
+        # Pass 3: Next-line split for MRP or Total Amount (Label on line 1, Amount on line 2)
+        if total_amount is None:
+            comb_split_pat = (
+                f"(?:{_mrp_label}|{_total_label})" +
                 r'\s*[:=]?\s*\n\s*' +
                 _currency_pat +
-                r'\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)(?:\s*/-)?\b'
+                r'\s*' + _amount_num_pat
             )
-            m_split = re.search(split_pat, cleaned_text, re.I)
+            m_split = re.search(comb_split_pat, cleaned_text, re.I)
             if m_split:
                 raw_val = m_split.group(1).replace(',', '')
                 if not re.match(r'^20\d{2}$', raw_val):
@@ -322,15 +391,15 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
                         v = Decimal(raw_val)
                         if v > 0:
                             total_amount = v
-                            total_confidence = 0.85
+                            total_confidence = 0.90
                     except Exception:
                         pass
 
-        # Pass 3: Currency-explicit amounts (e.g. "Rs. 450", "₹ 1,250.00", "$17.90")
+        # Pass 4: Currency-explicit amounts (e.g. "Rs. 450", "₹ 1,250.00", "$17.90", "450/-")
         if total_amount is None:
             curr_strict_pat = (
-                r'(?:[\$\u20ac\u00a3\u20b9]|Rs\.?\s+|INR\s+|USD\s+|EUR\s+|GBP\s+)'
-                r'([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)(?:\s*/-)?\b'
+                r'(?:[\$\u20ac\u00a3\u20b9]|Rs\.?\s+|INR\s+|USD\s+|EUR\s+|GBP\s+)' +
+                _amount_num_pat
             )
             curr_matches = list(re.finditer(curr_strict_pat, cleaned_text, re.I))
             candidates = []
@@ -343,14 +412,14 @@ class MockReceiptProvider(ReceiptUnderstandingProvider):
                         pass
             if candidates:
                 total_amount = max(candidates)
-                total_confidence = 0.80
+                total_confidence = 0.85
 
-        # Pass 4: Fallback heuristic: Largest monetary amount from lines (skipping tax lines)
+        # Pass 5: Fallback heuristic: Largest monetary amount from lines (skipping taxes and phone numbers)
         if total_amount is None:
             amount_pat = r'\b([0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2}|[0-9]+\.[0-9]{2})\b'
             all_amounts = []
             for line in cleaned_text.splitlines():
-                if re.search(r'\b(tax|vat|gst|cgst|sgst|discount|subtotal)\b', line, re.I):
+                if re.search(r'\b(tax|vat|gst|cgst|sgst|discount|subtotal|phone|mob|tel)\b', line, re.I):
                     continue
                 for am in re.finditer(amount_pat, line):
                     raw_val = am.group(1).replace(',', '')

@@ -10,6 +10,7 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [focusMode, setFocusMode] = useState(false);
   const showQueueSidebar = !focusMode;
   const setShowQueueSidebar = (show) => setFocusMode(!show);

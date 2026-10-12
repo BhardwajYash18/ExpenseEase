@@ -27,8 +27,13 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Pass non-GET and API requests directly to the network
-  if (event.request.method !== 'GET' || event.request.url.includes('/api/')) {
+  // Pass non-GET, API requests, and local development traffic directly to the network
+  if (
+    event.request.method !== 'GET' ||
+    event.request.url.includes('/api/') ||
+    event.request.url.includes('localhost') ||
+    event.request.url.includes('127.0.0.1')
+  ) {
     return;
   }
 

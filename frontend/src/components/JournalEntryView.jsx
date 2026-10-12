@@ -475,7 +475,7 @@ function JournalEntryView({ authToken, currentUser }) {
                 {selectedEntry.isBalanced ? '✓ Tally Balanced (0.00 Difference)' : '⚠ Imbalance Detected'}
               </div>
               <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                Double-Entry Invariant: $\sum \text{Debits} = \sum \text{Credits}$ enforced using exact integer-cent arithmetic.
+                Double-Entry Invariant: {'$\\sum \\text{Debits} = \\sum \\text{Credits}$'} enforced using exact integer-cent arithmetic.
               </p>
             </div>
 

@@ -108,3 +108,72 @@ def test_http_endpoint_receipt_understanding():
     assert float(data["total_amount"]) == 9.20
     assert data["suggested_category"] == "Meals"
     assert len(data["line_items"]) == 2
+
+def test_extract_name_variations(mock_service):
+    """
+    User requirement:
+    - Name is written only after 'name' or something similar.
+    - Name can only be 2 to 3 words long.
+    - Must NOT incorporate other data near it as part of the name (e.g. age, sex, phone, address, doctor title).
+    """
+    test_cases = [
+        ("Patient Name: Vivek Kumar Shah Age: 28 Sex: M\nDate: 2026-10-12\nTotal: 500", "Vivek Kumar Shah"),
+        ("Customer Name: Rahul Sharma Ph: 9876543210\nDate: 2026-10-12\nTotal: 500", "Rahul Sharma"),
+        ("Name - Dr. Priya Verma Bed: 102\nDate: 2026-10-12\nTotal: 500", "Priya Verma"),
+        ("Pt. Name: Rahul Soni (M/34)\nDate: 2026-10-12\nTotal: 500", "Rahul Soni"),
+        ("Name: Robert James Miller Jr. Address: 123 Main St\nDate: 2026-10-12\nTotal: 500", "Robert James Miller"),
+        ("Name:\nAnanya Roy\nAge: 25\nDate: 2026-10-12\nTotal: 500", "Ananya Roy"),
+    ]
+    for ocr_text, expected_name in test_cases:
+        res = asyncio.run(mock_service.extract_receipt_data(ocr_text))
+        assert res.merchant_name == expected_name
+        # Verify length constraint: name is strictly 2 to 3 words
+        words = res.merchant_name.split()
+        assert len(words) in [2, 3]
+
+def test_extract_all_date_formats(mock_service):
+    """
+    User requirement:
+    - Text recognition needs to be able to identify all date formats.
+    """
+    test_cases = [
+        ("Invoice\nDate: 2026-10-12\nTotal: $100", date(2026, 10, 12)),
+        ("Bill\nDate: 12/10/2026\nINR 500", date(2026, 10, 12)),
+        ("Receipt\nDate: 12.10.2026\nTotal: 100", date(2026, 10, 12)),
+        ("Receipt\nDate: 12-10-2026\nTotal: 100", date(2026, 10, 12)),
+        ("Bill\nDate: 12/10/26\nINR 500", date(2026, 10, 12)),
+        ("Receipt\nDate: 12.10.26\nTotal: 100", date(2026, 10, 12)),
+        ("Receipt\nDate: 12-10-26\nTotal: 100", date(2026, 10, 12)),
+        ("Voucher\nDate: 12 Oct 2026\nTotal: 100", date(2026, 10, 12)),
+        ("Voucher\nDate: 12th Oct 2026\nTotal: 100", date(2026, 10, 12)),
+        ("Voucher\nDate: 12-Oct-2026\nTotal: 100", date(2026, 10, 12)),
+        ("Voucher\nDate: 12-OCT-26\nTotal: 100", date(2026, 10, 12)),
+        ("Voucher\nDate: October 12, 2026\nTotal: 100", date(2026, 10, 12)),
+        ("Voucher\nDate: Oct 12, 2026\nTotal: 100", date(2026, 10, 12)),
+        ("US Receipt\nDate: 04/25/2026\nTotal: $100", date(2026, 4, 25)),
+        ("India Receipt\nDate: 25/04/2026\nTotal: Rs. 100", date(2026, 4, 25)),
+    ]
+    for ocr_text, expected_date in test_cases:
+        res = asyncio.run(mock_service.extract_receipt_data(ocr_text))
+        assert res.receipt_date == expected_date
+
+def test_extract_amount_and_mrp(mock_service):
+    """
+    User requirement:
+    - Make sure to add amount/mrp taken into account without errors.
+    """
+    test_cases = [
+        ("Pharmacy Bill\nDate: 2026-10-12\nMRP: Rs. 450.00", Decimal("450.00")),
+        ("Store Voucher\nDate: 2026-10-12\nM.R.P. : 500/-", Decimal("500")),
+        ("Medicine Slip\nDate: 2026-10-12\nMRP: 450/-", Decimal("450")),
+        ("Retail Bill\nDate: 2026-10-12\nMaximum Retail Price: 350.00", Decimal("350.00")),
+        ("Clinic Bill\nDate: 2026-10-12\nM.R.P. (Incl of all taxes) : 1250.00", Decimal("1250.00")),
+        ("Receipt\nDate: 2026-10-12\nMRP\nRs. 500.00", Decimal("500.00")),
+        ("Store Bill\nDate: 2026-10-12\nNET PAYABLE: Rs. 780.00", Decimal("780.00")),
+        ("Invoice\nDate: 2026-10-12\nGRAND TOTAL: 1,450.00", Decimal("1450.00")),
+        ("Cash Memo\nDate: 2026-10-12\nBILL AMT: 320.00", Decimal("320.00")),
+    ]
+    for ocr_text, expected_amount in test_cases:
+        res = asyncio.run(mock_service.extract_receipt_data(ocr_text))
+        assert res.total_amount == expected_amount
+
