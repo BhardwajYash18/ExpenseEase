@@ -280,6 +280,63 @@ describe('Checkpoint 6 — Approval Workflow Integration Tests', () => {
 
       expect(res.status).toBe(403);
       expect(res.body.error.message).toMatch(/cannot approve their own expense/i);
+
+      // ManagerA tries to reject their own receipt
+      const resReject = await request(app)
+        .post(`/api/receipts/${managerReceiptId}/workflow/reject`)
+        .set('Authorization', `Bearer ${managerAToken}`)
+        .send({ reason: 'Self rejecting' });
+
+      expect(resReject.status).toBe(403);
+      expect(resReject.body.error.message).toMatch(/cannot reject their own expense/i);
+
+      // ManagerA tries to request correction on their own receipt
+      const resCorrect = await request(app)
+        .post(`/api/receipts/${managerReceiptId}/workflow/request-correction`)
+        .set('Authorization', `Bearer ${managerAToken}`)
+        .send({ reason: 'Self correcting' });
+
+      expect(resCorrect.status).toBe(403);
+      expect(resCorrect.body.error.message).toMatch(/cannot request correction on their own expense/i);
+    });
+
+    it('should allow manager to upload a receipt and submit expense claim', async () => {
+      const mgrKey = storageService.generateStorageKey(tenantAId, 'image/jpeg');
+      await storageService.storeFile(mgrKey, Buffer.from('mgr upload test'));
+
+      let mgrNewReceiptId;
+      await withTenantContext(tenantAId, async (client) => {
+        const r = await client.query(
+          `INSERT INTO receipts (
+            tenant_id, uploaded_by, original_filename, mime_type, file_size_bytes, storage_key, upload_status, ocr_status
+          ) VALUES ($1, $2, 'mgr_sub.jpg', 'image/jpeg', 100, $3, 'COMPLETED', 'COMPLETED')
+          RETURNING id`,
+          [tenantAId, managerAId, mgrKey]
+        );
+        mgrNewReceiptId = r.rows[0].id;
+
+        await client.query(
+          `INSERT INTO receipt_extractions (
+            receipt_id, tenant_id, extraction_status, ai_total_amount
+          ) VALUES ($1, $2, 'COMPLETED', 150.00)`,
+          [mgrNewReceiptId, tenantAId]
+        );
+
+        await client.query(
+          `INSERT INTO receipt_validation_results (
+            receipt_id, tenant_id, validation_status
+          ) VALUES ($1, $2, 'PASSED')`,
+          [mgrNewReceiptId, tenantAId]
+        );
+      });
+
+      const resSubmit = await request(app)
+        .post(`/api/receipts/${mgrNewReceiptId}/workflow/submit`)
+        .set('Authorization', `Bearer ${managerAToken}`);
+
+      expect(resSubmit.status).toBe(200);
+      expect(resSubmit.body.workflow.currentState).toBe('PENDING_APPROVAL');
+      expect(resSubmit.body.workflow.submittedBy).toBe(managerAId);
     });
   });
 

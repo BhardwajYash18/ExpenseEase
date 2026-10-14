@@ -369,9 +369,13 @@ async function rejectExpense(tenantId, receiptId, user, reason) {
 
     await client.query('BEGIN');
     try {
-      // 3. Lock workflow row
+      // 3. Lock workflow row and check submission ownership
       const { rows: lockedRows } = await client.query(
-        'SELECT * FROM expense_workflows WHERE receipt_id = $1 FOR UPDATE',
+        `SELECT w.*, r.uploaded_by
+         FROM expense_workflows w
+         JOIN receipts r ON w.receipt_id = r.id
+         WHERE w.receipt_id = $1
+         FOR UPDATE OF w`,
         [receiptId]
       );
 
@@ -382,6 +386,13 @@ async function rejectExpense(tenantId, receiptId, user, reason) {
       }
 
       const workflow = lockedRows[0];
+
+      // Enforce separation of duties: Submitter cannot reject their own expense submission
+      if (workflow.submitted_by === user.id || workflow.uploaded_by === user.id) {
+        const err = new Error('Forbidden: Separation of duties: Reviewer cannot reject their own expense submission.');
+        err.status = 403;
+        throw err;
+      }
 
       // 4. Verify current state
       if (workflow.current_state !== WORKFLOW_STATES.PENDING_APPROVAL) {
@@ -467,9 +478,13 @@ async function requestCorrection(tenantId, receiptId, user, reason) {
 
     await client.query('BEGIN');
     try {
-      // 3. Lock workflow row
+      // 3. Lock workflow row and check submission ownership
       const { rows: lockedRows } = await client.query(
-        'SELECT * FROM expense_workflows WHERE receipt_id = $1 FOR UPDATE',
+        `SELECT w.*, r.uploaded_by
+         FROM expense_workflows w
+         JOIN receipts r ON w.receipt_id = r.id
+         WHERE w.receipt_id = $1
+         FOR UPDATE OF w`,
         [receiptId]
       );
 
@@ -480,6 +495,13 @@ async function requestCorrection(tenantId, receiptId, user, reason) {
       }
 
       const workflow = lockedRows[0];
+
+      // Enforce separation of duties: Submitter cannot request correction on their own expense submission
+      if (workflow.submitted_by === user.id || workflow.uploaded_by === user.id) {
+        const err = new Error('Forbidden: Separation of duties: Reviewer cannot request correction on their own expense submission.');
+        err.status = 403;
+        throw err;
+      }
 
       // 4. Verify current state
       if (workflow.current_state !== WORKFLOW_STATES.PENDING_APPROVAL) {

@@ -13,9 +13,14 @@ async function login(req, res, next) {
       return res.status(400).json({ error: { message: 'Validation failed', details: errors.array() } });
     }
 
-    const { email, password, slug } = req.body;
+    const { email, loginId, password, slug } = req.body;
 
-    const result = await authService.login({ email, password, tenantSlug: slug });
+    const result = await authService.login({
+      email,
+      loginId,
+      password,
+      tenantSlug: slug,
+    });
 
     return res.status(200).json({
       token: result.token,

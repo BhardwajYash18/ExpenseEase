@@ -5,12 +5,23 @@ const authenticate = require('../middleware/authenticate');
 
 const router = express.Router();
 
-// Input validation rules for login
+// Input validation rules for unified login
 const loginValidation = [
   body('email')
+    .optional()
     .isEmail()
     .withMessage('email must be a valid email address')
     .normalizeEmail(),
+  body('loginId')
+    .optional()
+    .isString()
+    .trim(),
+  body().custom((value) => {
+    if ((!value.email || !value.email.trim()) && (!value.loginId || !value.loginId.trim())) {
+      throw new Error('A unique login ID or email address is required');
+    }
+    return true;
+  }),
   body('password')
     .isString()
     .withMessage('password must be a string')

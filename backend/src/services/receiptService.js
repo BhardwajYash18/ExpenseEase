@@ -319,17 +319,35 @@ async function listReceipts(tenantId, options = {}) {
     const params = [];
     const conditions = [];
 
-    // Filter by role & ownership
-    if (options.role === 'EMPLOYEE' && options.userId) {
+    // Filter by role, ownership, and upload history visibility:
+    // 1. The receipt upload history of ANY user (employee or manager) must be visible ONLY to themselves.
+    //    When scope=personal, scope=my, or role=EMPLOYEE, filter strictly by r.uploaded_by = userId.
+    // 2. The ONLY history visible to a manager regarding other users is the list of pending submitted approvals:
+    //    w.current_state = 'PENDING_APPROVAL'.
+    // 3. For FINANCE: only submitted/approved receipts are visible for batching & GL accounting.
+    const isPersonalScope = options.scope === 'personal' || options.scope === 'my' || options.role === 'EMPLOYEE';
+
+    if (isPersonalScope && options.userId) {
       params.push(options.userId);
       conditions.push(`r.uploaded_by = $${params.length}`);
+    } else if (options.role === 'MANAGER') {
+      // The only history visible to manager regarding other users is the list of pending submitted approvals
+      conditions.push(`w.current_state = 'PENDING_APPROVAL'`);
+    } else {
+      // For FINANCE or tenant batches pool: drafts are excluded
+      conditions.push(`(w.current_state IS NOT NULL AND w.current_state != 'DRAFT')`);
     }
 
     if (options.status) {
-      params.push(options.status);
       if (options.status === 'DRAFT') {
-        conditions.push(`(w.current_state = $${params.length} OR w.current_state IS NULL)`);
-      } else {
+        // Drafts can only be viewed in the upload history of the unique user ID who uploaded it
+        if (!isPersonalScope && options.userId) {
+          params.push(options.userId);
+          conditions.push(`r.uploaded_by = $${params.length}`);
+        }
+        conditions.push(`(w.current_state = 'DRAFT' OR w.current_state IS NULL)`);
+      } else if (!conditions.includes(`w.current_state = 'PENDING_APPROVAL'`)) {
+        params.push(options.status);
         conditions.push(`w.current_state = $${params.length}`);
       }
     }
@@ -413,7 +431,7 @@ async function deleteReceipt(tenantId, receiptId, userFilter = null) {
     let query = `SELECT id, storage_key, uploaded_by FROM receipts WHERE id = $1`;
     const params = [receiptId];
 
-    if (userFilter && userFilter.role === 'EMPLOYEE') {
+    if (userFilter && (userFilter.role === 'EMPLOYEE' || userFilter.role === 'MANAGER')) {
       query += ` AND uploaded_by = $2`;
       params.push(userFilter.userId);
     }

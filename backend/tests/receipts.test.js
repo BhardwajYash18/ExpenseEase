@@ -12,6 +12,7 @@ describe('Checkpoint 3 — Receipt Capture & OCR', () => {
   let employeeAToken, employeeBToken;
   let managerAToken, financeAToken;
   let employeeAId, employeeBId;
+  let managerAId, financeAId;
 
   const rawPassword = 'SecurePassword123!';
 
@@ -74,12 +75,14 @@ describe('Checkpoint 3 — Receipt Capture & OCR', () => {
          VALUES ($1, 'mgr.a@test.com', $2, 'Bob', 'Mgr', 'MANAGER', 'ACTIVE') RETURNING id`,
         [tenantAId, hashedPwd]
       );
+      managerAId = mgrRes.rows[0].id;
 
       const finRes = await client.query(
         `INSERT INTO users (tenant_id, email, password_hash, first_name, last_name, role, status)
          VALUES ($1, 'fin.a@test.com', $2, 'Charlie', 'Fin', 'FINANCE', 'ACTIVE') RETURNING id`,
         [tenantAId, hashedPwd]
       );
+      financeAId = finRes.rows[0].id;
     });
 
     // Create user in Tenant B
@@ -95,8 +98,8 @@ describe('Checkpoint 3 — Receipt Capture & OCR', () => {
     // Generate tokens
     employeeAToken = authService.signToken({ sub: employeeAId, tid: tenantAId, role: 'EMPLOYEE' });
     employeeBToken = authService.signToken({ sub: employeeBId, tid: tenantBId, role: 'EMPLOYEE' });
-    managerAToken = authService.signToken({ sub: 'mgr-a-id', tid: tenantAId, role: 'MANAGER' });
-    financeAToken = authService.signToken({ sub: 'fin-a-id', tid: tenantAId, role: 'FINANCE' });
+    managerAToken = authService.signToken({ sub: managerAId, tid: tenantAId, role: 'MANAGER' });
+    financeAToken = authService.signToken({ sub: financeAId, tid: tenantAId, role: 'FINANCE' });
   });
 
   afterAll(async () => {
@@ -201,14 +204,14 @@ describe('Checkpoint 3 — Receipt Capture & OCR', () => {
       expect(res.status).toBe(201);
     });
 
-    it('should forbid MANAGER from uploading receipts', async () => {
+    it('should allow MANAGER to upload receipts', async () => {
       const res = await request(app)
         .post('/api/receipts/upload')
         .set('Authorization', `Bearer ${managerAToken}`)
         .attach('receipt', validJpegBuffer, 'mgr_receipt.jpg');
 
-      expect(res.status).toBe(403);
-      expect(res.body.error.message).toMatch(/Forbidden/i);
+      expect(res.status).toBe(201);
+      expect(res.body.receipt).toBeDefined();
     });
 
     it('should forbid FINANCE from uploading receipts', async () => {
@@ -310,4 +313,89 @@ describe('Checkpoint 3 — Receipt Capture & OCR', () => {
       expect(['COMPLETED', 'FAILED']).toContain(res.body.ocr.ocrStatus);
     });
   });
+
+  // ==========================================
+  // SECTION 3: Upload History & Draft Isolation
+  // ==========================================
+  describe('Upload History & Draft Isolation (GET /api/receipts)', () => {
+    let draftReceiptId;
+
+    beforeAll(async () => {
+      // Employee A uploads a new receipt (saved as draft, not submitted)
+      const res = await request(app)
+        .post('/api/receipts/upload')
+        .set('Authorization', `Bearer ${employeeAToken}`)
+        .attach('receipt', validJpegBuffer, 'employee_a_draft.jpg');
+      draftReceiptId = res.body.receipt.id;
+    });
+
+    it('shows draft receipt in upload history of the unique user who uploaded it', async () => {
+      const res = await request(app)
+        .get('/api/receipts')
+        .set('Authorization', `Bearer ${employeeAToken}`);
+
+      expect(res.status).toBe(200);
+      const found = res.body.receipts.find((r) => r.id === draftReceiptId);
+      expect(found).toBeDefined();
+      expect(found.workflow_state).toBe('DRAFT');
+    });
+
+    it('HIDES unsubmitted draft receipts from manager in tenant submissions ledger', async () => {
+      const res = await request(app)
+        .get('/api/receipts')
+        .set('Authorization', `Bearer ${managerAToken}`);
+
+      expect(res.status).toBe(200);
+      const found = res.body.receipts.find((r) => r.id === draftReceiptId);
+      expect(found).toBeUndefined(); // MUST NOT BE VISIBLE TO MANAGER
+    });
+
+    it('isolates personal upload history for manager via scope=personal', async () => {
+      // Manager personal history only shows receipts uploaded by manager
+      const res = await request(app)
+        .get('/api/receipts?scope=personal')
+        .set('Authorization', `Bearer ${managerAToken}`);
+
+      expect(res.status).toBe(200);
+      const found = res.body.receipts.find((r) => r.id === draftReceiptId);
+      expect(found).toBeUndefined();
+    });
+
+    it('makes receipt visible to manager in tenant ledger once submitted', async () => {
+      // Setup extraction & validation prerequisites for submission
+      await withTenantContext(tenantAId, async (client) => {
+        await client.query(
+          `INSERT INTO receipt_extractions (
+            receipt_id, tenant_id, extraction_status, ai_merchant_name, ai_receipt_date, ai_total_amount, ai_suggested_category
+          ) VALUES ($1, $2, 'COMPLETED', 'Draft Test Store', '2026-05-15', 50.00, 'Office Supplies')`,
+          [draftReceiptId, tenantAId]
+        );
+        await client.query(
+          `INSERT INTO receipt_validation_results (
+            receipt_id, tenant_id, validation_status, validation_version, policy_rules_result, duplicate_status, duplicate_score
+          ) VALUES ($1, $2, 'PASSED', 'v1', '[]'::jsonb, 'NO_MATCH', 0.00)`,
+          [draftReceiptId, tenantAId]
+        );
+      });
+
+      // Submit the draft voucher into workflow
+      const submitRes = await request(app)
+        .post(`/api/receipts/${draftReceiptId}/workflow/submit`)
+        .set('Authorization', `Bearer ${employeeAToken}`)
+        .send({ requestedAmount: 50.00, reimbursementDescription: 'Business travel lunch' });
+
+      expect(submitRes.status).toBe(200);
+
+      // Now it must appear in manager's submitted receipts history
+      const managerRes = await request(app)
+        .get('/api/receipts')
+        .set('Authorization', `Bearer ${managerAToken}`);
+
+      expect(managerRes.status).toBe(200);
+      const found = managerRes.body.receipts.find((r) => r.id === draftReceiptId);
+      expect(found).toBeDefined();
+      expect(found.workflow_state).toBe('PENDING_APPROVAL');
+    });
+  });
 });
+

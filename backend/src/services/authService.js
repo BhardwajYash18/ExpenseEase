@@ -110,7 +110,12 @@ async function lookupTenantBySlug(slug) {
  * @returns {Promise<{ token: string, user: object }>}
  * @throws {Error} on invalid credentials (generic error — prevents enumeration)
  */
-async function login({ email, password, tenantSlug }) {
+async function login({ email, loginId, password, tenantSlug }) {
+  const identifier = (loginId || email || '').trim();
+  if (!identifier) {
+    throw Object.assign(new Error('Invalid credentials'), { status: 401 });
+  }
+
   // Step 1: Resolve tenant from slug (pre-auth tenant identity lookup)
   const tenant = await lookupTenantBySlug(tenantSlug);
 
@@ -128,14 +133,17 @@ async function login({ email, password, tenantSlug }) {
   let user;
   try {
     user = await withTenantContext(tenant.id, async (client) => {
-      const { rows } = await client.query(
-        // Only fetch the minimum fields required for authentication.
-        // password_hash is fetched for verification ONLY — never returned.
-        `SELECT id, tenant_id, email, password_hash, role, status, first_name, last_name
-         FROM users
-         WHERE email = $1`,
-        [email]
-      );
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
+      const query = isUuid
+        ? `SELECT id, tenant_id, email, password_hash, role, status, first_name, last_name
+           FROM users
+           WHERE id = $1 OR LOWER(email) = LOWER($2)`
+        : `SELECT id, tenant_id, email, password_hash, role, status, first_name, last_name
+           FROM users
+           WHERE LOWER(email) = LOWER($1)`;
+      const params = isUuid ? [identifier, identifier] : [identifier];
+
+      const { rows } = await client.query(query, params);
       return rows[0] || null;
     });
   } catch (_) {

@@ -57,7 +57,7 @@ function handleMulterError(err, req, res, next) {
 router.post(
   '/upload',
   authenticate,
-  requireRole('EMPLOYEE'),
+  requireRole('EMPLOYEE', 'MANAGER'),
   upload.single('receipt'),
   handleMulterError,
   receiptController.upload
@@ -66,7 +66,7 @@ router.post(
 router.post(
   '/',
   authenticate,
-  requireRole('EMPLOYEE'),
+  requireRole('EMPLOYEE', 'MANAGER'),
   upload.single('receipt'),
   handleMulterError,
   receiptController.upload
@@ -103,7 +103,7 @@ router.get(
 router.delete(
   '/:id',
   authenticate,
-  requireRole('EMPLOYEE'),
+  requireRole('EMPLOYEE', 'MANAGER'),
   receiptController.remove
 );
 
@@ -215,7 +215,7 @@ router.get(
 router.post(
   '/:id/workflow/submit',
   authenticate,
-  requireRole('EMPLOYEE'),
+  requireRole('EMPLOYEE', 'MANAGER'),
   workflowController.submitExpense
 );
 

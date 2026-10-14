@@ -35,18 +35,20 @@ async function upload(req, res, next) {
 /**
  * GET /api/receipts
  * List receipts for the authenticated user's tenant.
- * - EMPLOYEE: sees only their own receipts
- * - MANAGER / FINANCE: sees all receipts in the tenant
+ * - EMPLOYEE: sees only their own receipts (personal upload history)
+ * - MANAGER: sees their own receipts (scope=personal) or pending submitted approvals (approvals queue)
+ * - FINANCE: sees submitted/approved receipts for finance batching
  */
 async function list(req, res, next) {
   try {
-    const { limit, offset, page, pageSize, status } = req.query;
+    const { limit, offset, page, pageSize, status, scope } = req.query;
     const result = await receiptService.listReceipts(req.user.tenantId, {
       limit,
       offset,
       page,
       pageSize,
       status,
+      scope,
       userId: req.user.id,
       role: req.user.role,
     });

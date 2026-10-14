@@ -209,6 +209,35 @@ describe('Checkpoint 2 — Authentication & RBAC', () => {
       expect(res.body.error.message).toBe('Invalid credentials');
     });
 
+    it('successfully logs in using unique loginId (UUID) and assigns role from database', async () => {
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({
+          loginId: employeeUser.id,
+          password: rawPassword,
+          slug: tenantASlug,
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.token).toBeDefined();
+      expect(res.body.user.id).toBe(employeeUser.id);
+      expect(res.body.user.role).toBe('EMPLOYEE');
+    });
+
+    it('successfully logs in using unique loginId (email address) and assigns role from database', async () => {
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({
+          loginId: 'mgr@alpha.com',
+          password: rawPassword,
+          slug: tenantASlug,
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.token).toBeDefined();
+      expect(res.body.user.role).toBe('MANAGER');
+    });
+
     it('returns generic 401 for non-existent user (prevents email enumeration)', async () => {
       const res = await request(app)
         .post('/api/auth/login')
