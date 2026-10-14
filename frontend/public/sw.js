@@ -27,12 +27,17 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Pass non-GET, API requests, and local development traffic directly to the network
+  // Pass non-GET, API requests, Vite dev scripts, and local development traffic directly to the network
+  const url = new URL(event.request.url);
   if (
     event.request.method !== 'GET' ||
-    event.request.url.includes('/api/') ||
-    event.request.url.includes('localhost') ||
-    event.request.url.includes('127.0.0.1')
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/@') ||
+    url.pathname.startsWith('/node_modules/') ||
+    url.hostname === 'localhost' ||
+    url.hostname === '127.0.0.1' ||
+    url.port === '3000'
   ) {
     return;
   }

@@ -1,4 +1,41 @@
 import React, { useState, useEffect } from 'react';
+import {
+  IconReceipt,
+  IconCamera,
+  IconPlus,
+  IconTrash,
+  IconFileText,
+  IconSparkles,
+  IconCoins,
+  IconCalendar,
+  IconTag,
+  IconEdit,
+  IconClock,
+  IconSend,
+  IconCheckCircle,
+  IconXCircle,
+  IconShield,
+  IconUser,
+  IconStar,
+  IconLock,
+  IconCheck,
+  IconUndo,
+  IconX,
+  IconSplit,
+  IconClipboard,
+  IconZoomIn,
+  IconZoomOut,
+  IconAlertTriangle,
+  IconRefresh,
+  IconFolder,
+  IconMaximize,
+  IconSave,
+  IconZap,
+  IconSearch,
+  IconEye,
+  IconInfo,
+  IconExternalLink,
+} from './Icons';
 
 const ALLOWED_CATEGORIES = [
   'Meals',
@@ -471,9 +508,16 @@ export default function ReceiptView({
   const isEmployee = currentUser?.role === 'EMPLOYEE';
   const isManager = currentUser?.role === 'MANAGER';
   const isFinance = currentUser?.role === 'FINANCE';
-  const isSubmitter = isEmployee || (currentUser && (receipt.uploaded_by === currentUser.id || receipt.uploadedBy === currentUser.id));
+  const isSelfSubmitted = Boolean(
+    currentUser?.id && (
+      receipt.uploaded_by === currentUser.id ||
+      receipt.uploadedBy === currentUser.id ||
+      workflowData?.submittedBy === currentUser.id
+    )
+  );
+  const isSubmitter = isSelfSubmitted || (isEmployee && !receipt.uploaded_by);
   const currentState = workflowData?.currentState || 'DRAFT';
-  const canEditDetails = isEmployee && (currentState === 'DRAFT' || currentState === 'CORRECTION_REQUESTED');
+  const canEditDetails = (isSubmitter || isSelfSubmitted) && (currentState === 'DRAFT' || currentState === 'CORRECTION_REQUESTED');
 
   const latestCorrectionAction = workflowData?.history?.slice().reverse().find(
     (a) => a.action === 'REQUEST_CORRECTION' && a.reason
@@ -495,8 +539,8 @@ export default function ReceiptView({
       {/* Top Banner / Dossier Header */}
       <div className="table-card" style={{ padding: '18px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{ width: '40px', height: '40px', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--gold-bg-subtle)', color: 'var(--gold-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem' }}>
-            🧾
+          <div style={{ width: '40px', height: '40px', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--gold-bg-subtle)', color: 'var(--gold-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <IconReceipt size={22} />
           </div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -521,8 +565,9 @@ export default function ReceiptView({
               className="btn btn-outline btn-sm"
               id="retake-picture-header-btn"
               onClick={onRetakePicture}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             >
-              📷 Retake Picture
+              <IconCamera size={14} /> Retake Picture
             </button>
           )}
           {onAddMoreReceipts && (
@@ -531,19 +576,20 @@ export default function ReceiptView({
               className="btn btn-outline btn-sm"
               id="add-more-receipts-header-btn"
               onClick={onAddMoreReceipts}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             >
-              ➕ Add More Receipts
+              <IconPlus size={14} /> Add More Receipts
             </button>
           )}
           {isSubmitter && (currentState === 'DRAFT' || currentState === 'CORRECTION_REQUESTED') && (
             <button
               type="button"
               className="btn btn-outline btn-sm"
-              style={{ color: '#ef4444', borderColor: '#fca5a5' }}
+              style={{ color: '#ef4444', borderColor: '#fca5a5', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               id="delete-receipt-header-btn"
               onClick={() => setShowDeleteConfirm(true)}
             >
-              🗑️ Delete Request
+              <IconTrash size={14} /> Delete Request
             </button>
           )}
           <button
@@ -551,8 +597,9 @@ export default function ReceiptView({
             className="btn btn-outline btn-sm"
             onClick={() => setShowRawOcr(true)}
             disabled={!receipt.ocrRawText && !receipt.ocr_raw_text}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
           >
-            📄 Raw OCR Text
+            <IconFileText size={14} /> Raw OCR Text
           </button>
           {!extraction && (
             <button
@@ -561,15 +608,20 @@ export default function ReceiptView({
               id="extract-ai-fields-btn"
               onClick={handleTriggerExtraction}
               disabled={loadingExtraction || !isOcrCompleted}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             >
-              {loadingExtraction ? 'Extracting...' : '✨ Run AI Extraction'}
+              {loadingExtraction ? (
+                <><IconClock size={14} className="spin" /> Extracting...</>
+              ) : (
+                <><IconSparkles size={14} /> Run AI Extraction</>
+              )}
             </button>
           )}
         </div>
       </div>
 
-      {/* Prominent Expense Claim Submission Bar for Employees/Submitters */}
-      {!isManager && (
+      {/* Prominent Expense Claim Submission Bar for Submitter (Employee or Submitting Manager) */}
+      {(isSubmitter || !isManager) && (
         <div
           className="table-card"
           id="claim-submission-banner"
@@ -598,13 +650,11 @@ export default function ReceiptView({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: '1.75rem',
-                fontWeight: 800,
                 boxShadow: '0 4px 12px rgba(217, 119, 6, 0.35)',
                 flexShrink: 0,
               }}
             >
-              💰
+              <IconCoins size={26} color="#0f172a" />
             </div>
             <div>
               <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8', fontWeight: 700 }}>
@@ -627,9 +677,9 @@ export default function ReceiptView({
                     : '0.00'}
                 </span>
               </div>
-              <div style={{ fontSize: '0.8125rem', color: '#cbd5e1', marginTop: '4px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                <span>📅 {effective.receiptDate || editForm.receiptDate || 'Date: N/A'}</span>
-                <span>🏷️ {effective.category || editForm.category || 'Other'}</span>
+              <div style={{ fontSize: '0.8125rem', color: '#cbd5e1', marginTop: '4px', display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><IconCalendar size={13} /> {effective.receiptDate || editForm.receiptDate || 'Date: N/A'}</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><IconTag size={13} /> {effective.category || editForm.category || 'Other'}</span>
                 {effective.taxAmount !== null && effective.taxAmount !== undefined && (
                   <span style={{ color: '#94a3b8' }}>Tax: {Number(effective.taxAmount).toFixed(2)}</span>
                 )}
@@ -646,13 +696,13 @@ export default function ReceiptView({
                     type="button"
                     className="btn btn-outline btn-md"
                     id="btn-banner-edit-claim"
-                    style={{ color: '#f8fafc', borderColor: '#475569', background: 'rgba(255, 255, 255, 0.05)' }}
+                    style={{ color: '#f8fafc', borderColor: '#475569', background: 'rgba(255, 255, 255, 0.05)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                     onClick={() => {
                       initEditForm(extraction);
                       setIsEditing(true);
                     }}
                   >
-                    ✏️ Adjust Name / Amount
+                    <IconEdit size={14} /> Adjust Name / Amount
                   </button>
                 )}
                 <button
@@ -664,20 +714,25 @@ export default function ReceiptView({
                     fontSize: '1rem',
                     padding: '12px 24px',
                     boxShadow: '0 4px 14px rgba(217, 119, 6, 0.4)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
                   }}
                   onClick={() => handleWorkflowAction('SUBMIT')}
                   disabled={actionLoading}
                 >
-                  {actionLoading
-                    ? '⏳ Submitting Claim...'
-                    : currentState === 'CORRECTION_REQUESTED'
-                    ? '🚀 Resubmit Expense Claim'
-                    : '🚀 Submit Expense Claim'}
+                  {actionLoading ? (
+                    <><IconClock size={16} className="spin" /> Submitting Claim...</>
+                  ) : currentState === 'CORRECTION_REQUESTED' ? (
+                    <><IconSend size={16} /> Resubmit Expense Claim</>
+                  ) : (
+                    <><IconSend size={16} /> Submit Expense Claim</>
+                  )}
                 </button>
               </>
             ) : currentState === 'PENDING_APPROVAL' ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '10px 16px', borderRadius: 'var(--radius-md)' }}>
-                <span style={{ fontSize: '1.25rem' }}>⏳</span>
+                <IconClock size={20} color="#93c5fd" />
                 <div>
                   <div style={{ fontWeight: 700, color: '#93c5fd', fontSize: '0.875rem' }}>Claim Submitted</div>
                   <div style={{ fontSize: '0.75rem', color: '#bfdbfe' }}>Queued for Manager review &amp; approval</div>
@@ -685,7 +740,7 @@ export default function ReceiptView({
               </div>
             ) : currentState === 'APPROVED' ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '10px 16px', borderRadius: 'var(--radius-md)' }}>
-                <span style={{ fontSize: '1.25rem' }}>✅</span>
+                <IconCheckCircle size={20} color="#10b981" />
                 <div>
                   <div style={{ fontWeight: 700, color: '#6ee7b7', fontSize: '0.875rem' }}>Claim Approved</div>
                   <div style={{ fontSize: '0.75rem', color: '#a7f3d0' }}>Ready for Finance Batch processing</div>
@@ -693,7 +748,7 @@ export default function ReceiptView({
               </div>
             ) : currentState === 'REJECTED' ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '10px 16px', borderRadius: 'var(--radius-md)' }}>
-                <span style={{ fontSize: '1.25rem' }}>❌</span>
+                <IconXCircle size={20} color="#ef4444" />
                 <div>
                   <div style={{ fontWeight: 700, color: '#fca5a5', fontSize: '0.875rem' }}>Claim Rejected</div>
                   <div style={{ fontSize: '0.75rem', color: '#fecaca' }}>Check audit log for reason</div>
@@ -720,7 +775,7 @@ export default function ReceiptView({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
             <div style={{ minWidth: '220px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '1.25rem' }}>🛡️</span>
+                <IconShield size={20} color="var(--gold-hover)" />
                 <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                   Manager Review &amp; Decision Bar
                 </h4>
@@ -728,8 +783,8 @@ export default function ReceiptView({
                   {currentState.replace('_', ' ')}
                 </span>
               </div>
-              <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                Claimant: 👤 <strong>{receipt.employeeName || 'Employee'}</strong> &bull; {receipt.employeeEmail || ''}
+              <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                Claimant: <IconUser size={13} /> <strong>{receipt.employeeName || 'Employee'}</strong> &bull; {receipt.employeeEmail || ''}
               </div>
             </div>
 
@@ -743,70 +798,95 @@ export default function ReceiptView({
               </div>
               <div style={{ width: '1px', height: '28px', background: 'var(--border-subtle)' }}></div>
               <div>
-                <span style={{ fontSize: '0.7rem', color: 'var(--gold-hover)', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>★ Claimed Reimbursement</span>
-                <span style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--gold-hover)', fontFamily: 'var(--font-display)' }}>
+                <span style={{ fontSize: '0.7rem', color: 'var(--gold-hover)', display: 'inline-flex', alignItems: 'center', gap: '3px', textTransform: 'uppercase', fontWeight: 700 }}>
+                  <IconStar size={11} /> Claimed Reimbursement
+                </span>
+                <span style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--gold-hover)', fontFamily: 'var(--font-display)', display: 'block' }}>
                   {effective.currency || 'INR'} {effective.requestedAmount !== null && effective.requestedAmount !== undefined ? Number(effective.requestedAmount).toFixed(2) : (effective.totalAmount !== null && effective.totalAmount !== undefined ? Number(effective.totalAmount).toFixed(2) : '0.00')}
                 </span>
               </div>
             </div>
 
-            {/* Prominent, Uncompressed Decision Buttons for PENDING_APPROVAL */}
-            {currentState === 'PENDING_APPROVAL' && (
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  className="btn btn-gold btn-md"
-                  id="btn-manager-approve-top"
-                  style={{ padding: '10px 22px', fontWeight: 700, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 8px rgba(229,169,59,0.35)' }}
-                  onClick={() => setReasonModal({ type: 'APPROVE', reason: '' })}
-                  disabled={actionLoading}
-                >
-                  <span>✓</span> Approve Claim
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-warning btn-md"
-                  id="btn-manager-correct-top"
-                  style={{ padding: '10px 18px', fontWeight: 600, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-                  onClick={() => setReasonModal({ type: 'REQUEST_CORRECTION', reason: '' })}
-                  disabled={actionLoading}
-                >
-                  <span>↺</span> Request Correction
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-danger btn-md"
-                  id="btn-manager-reject-top"
-                  style={{ padding: '10px 18px', fontWeight: 600, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-                  onClick={() => setReasonModal({ type: 'REJECT', reason: '' })}
-                  disabled={actionLoading}
-                >
-                  <span>✕</span> Reject
-                </button>
+            {/* Decision Controls: If self-submitted, prohibit self-approval/rejection under separation of duties */}
+            {isSelfSubmitted ? (
+              <div
+                id="self-approval-forbidden-banner"
+                style={{
+                  padding: '10px 18px',
+                  background: '#fffbeb',
+                  border: '1px solid #fef3c7',
+                  borderRadius: 'var(--radius-md)',
+                  color: '#92400e',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <IconLock size={15} color="#92400e" />
+                <span>
+                  <strong>Self-Approval &amp; Rejection Prohibited:</strong> You submitted this claim. Under company policy, another authorized manager must review and sign off on it.
+                </span>
               </div>
+            ) : (
+              currentState === 'PENDING_APPROVAL' && (
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-gold btn-md"
+                    id="btn-manager-approve-top"
+                    style={{ padding: '10px 22px', fontWeight: 700, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 8px rgba(229,169,59,0.35)' }}
+                    onClick={() => setReasonModal({ type: 'APPROVE', reason: '' })}
+                    disabled={actionLoading}
+                  >
+                    <IconCheck size={16} /> Approve Claim
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-warning btn-md"
+                    id="btn-manager-correct-top"
+                    style={{ padding: '10px 18px', fontWeight: 600, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    onClick={() => setReasonModal({ type: 'REQUEST_CORRECTION', reason: '' })}
+                    disabled={actionLoading}
+                  >
+                    <IconUndo size={16} /> Request Correction
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger btn-md"
+                    id="btn-manager-reject-top"
+                    style={{ padding: '10px 18px', fontWeight: 600, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    onClick={() => setReasonModal({ type: 'REJECT', reason: '' })}
+                    disabled={actionLoading}
+                  >
+                    <IconX size={16} /> Reject
+                  </button>
+                </div>
+              )
             )}
 
             {currentState === 'DRAFT' && (
-              <div style={{ padding: '8px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 'var(--radius-md)', color: '#1e40af', fontSize: '0.85rem' }}>
-                ⏳ <strong>DRAFT:</strong> Submitter has not submitted this voucher yet. Approval options will unlock once submitted.
+              <div style={{ padding: '8px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 'var(--radius-md)', color: '#1e40af', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <IconClock size={15} /> <strong>DRAFT:</strong> Submitter has not submitted this voucher yet. Approval options will unlock once submitted.
               </div>
             )}
 
             {currentState === 'APPROVED' && (
               <div style={{ padding: '8px 18px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 'var(--radius-md)', color: '#065f46', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>✅</span> Claim Approved by Manager &bull; Queued for Finance Processing
+                <IconCheckCircle size={16} color="#10b981" /> Claim Approved by Manager &bull; Queued for Finance Processing
               </div>
             )}
 
             {currentState === 'CORRECTION_REQUESTED' && (
               <div style={{ padding: '8px 18px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 'var(--radius-md)', color: '#92400e', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>↺</span> Returned to Employee for Correction &bull; Awaiting Resubmission
+                <IconUndo size={16} color="#d97706" /> Returned to Employee for Correction &bull; Awaiting Resubmission
               </div>
             )}
 
             {currentState === 'REJECTED' && (
               <div style={{ padding: '8px 18px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 'var(--radius-md)', color: '#991b1b', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>❌</span> Claim Rejected by Manager
+                <IconXCircle size={16} color="#ef4444" /> Claim Rejected by Manager
               </div>
             )}
           </div>
@@ -827,10 +907,13 @@ export default function ReceiptView({
               fontWeight: inspectorTab === 'split' ? 700 : 500,
               fontSize: '0.8125rem',
               cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
             }}
             onClick={() => setInspectorTab('split')}
           >
-            ◫ Side-by-Side Review
+            <IconSplit size={14} /> Side-by-Side Review
           </button>
           <button
             type="button"
@@ -843,10 +926,13 @@ export default function ReceiptView({
               fontWeight: inspectorTab === 'scan' ? 700 : 500,
               fontSize: '0.8125rem',
               cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
             }}
             onClick={() => setInspectorTab('scan')}
           >
-            📷 Full Document Scan
+            <IconCamera size={14} /> Full Document Scan
           </button>
           <button
             type="button"
@@ -859,10 +945,13 @@ export default function ReceiptView({
               fontWeight: inspectorTab === 'details' ? 700 : 500,
               fontSize: '0.8125rem',
               cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
             }}
             onClick={() => setInspectorTab('details')}
           >
-            📋 Extracted Data &amp; Policy
+            <IconClipboard size={14} /> Extracted Data &amp; Policy
           </button>
         </div>
 
@@ -870,10 +959,10 @@ export default function ReceiptView({
           type="button"
           className="btn btn-outline btn-sm"
           onClick={() => setShowFullImageModal(true)}
-          style={{ fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}
+          style={{ fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
           title="Open full resolution photo in modal overlay"
         >
-          🔍 Enlarge Receipt Image
+          <IconZoomIn size={14} /> Enlarge Receipt Image
         </button>
       </div>
 
@@ -904,7 +993,9 @@ export default function ReceiptView({
           <div className="split-panel-body">
             {(receipt.ocrStatus === 'FAILED' || receipt.ocr_status === 'FAILED') && (
               <div className="alert alert-danger" style={{ marginBottom: '14px' }}>
-                <div style={{ fontWeight: 600, marginBottom: '4px' }}>⚠️ OCR Text Extraction Failed</div>
+                <div style={{ fontWeight: 600, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <IconAlertTriangle size={16} color="#ef4444" /> OCR Text Extraction Failed
+                </div>
                 <div style={{ fontSize: '0.8125rem' }}>
                   The uploaded receipt image could not be parsed clearly. You can retake the picture using your live camera, upload a clearer file, or delete this failed request.
                 </div>
@@ -914,16 +1005,18 @@ export default function ReceiptView({
                     className="btn btn-gold btn-sm"
                     onClick={handleRetryOcr}
                     disabled={retryOcrLoading}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                   >
-                    🔄 {retryOcrLoading ? 'Retrying OCR...' : 'Retry OCR Parsing'}
+                    <IconRefresh size={14} className={retryOcrLoading ? 'spin' : ''} /> {retryOcrLoading ? 'Retrying OCR...' : 'Retry OCR Parsing'}
                   </button>
                   {onRetakePicture && (
                     <button
                       type="button"
                       className="btn btn-outline btn-sm"
                       onClick={onRetakePicture}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                     >
-                      📷 Open Camera &amp; Retake
+                      <IconCamera size={14} /> Open Camera &amp; Retake
                     </button>
                   )}
                   {onAddMoreReceipts && (
@@ -931,17 +1024,18 @@ export default function ReceiptView({
                       type="button"
                       className="btn btn-outline btn-sm"
                       onClick={onAddMoreReceipts}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                     >
-                      📁 Browse &amp; Upload New File
+                      <IconFolder size={14} /> Browse &amp; Upload New File
                     </button>
                   )}
                   <button
                     type="button"
                     className="btn btn-outline btn-sm"
-                    style={{ color: '#ef4444', borderColor: '#fca5a5' }}
+                    style={{ color: '#ef4444', borderColor: '#fca5a5', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                     onClick={() => setShowDeleteConfirm(true)}
                   >
-                    🗑️ Delete Failed Request
+                    <IconTrash size={14} /> Delete Failed Request
                   </button>
                 </div>
 
@@ -950,22 +1044,26 @@ export default function ReceiptView({
             <div className="scan-preview-box">
               {imageLoading && (
                 <div style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8' }}>
-                  <div style={{ fontSize: '1.75rem', marginBottom: '8px' }}>🔄</div>
+                  <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'center' }}>
+                    <IconRefresh size={32} color="#94a3b8" className="spin" />
+                  </div>
                   <div>Loading high-resolution voucher scan...</div>
                 </div>
               )}
               {imageLoadError && !imageLoading && (
                 <div style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8' }}>
-                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📷</div>
+                  <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'center' }}>
+                    <IconCamera size={36} color="#94a3b8" />
+                  </div>
                   <div style={{ fontSize: '0.875rem' }}>Receipt preview could not be displayed directly.</div>
                   <a
                     href={`/api/receipts/${receipt.id}/file?token=${encodeURIComponent(authToken)}`}
                     target="_blank"
                     rel="noreferrer"
                     className="btn btn-outline btn-sm"
-                    style={{ marginTop: '12px', display: 'inline-block' }}
+                    style={{ marginTop: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                   >
-                    Open Image in New Tab ↗
+                    <IconExternalLink size={14} /> Open Image in New Tab
                   </a>
                 </div>
               )}
@@ -991,8 +1089,9 @@ export default function ReceiptView({
                   className="scan-control-btn"
                   title="Zoom Out"
                   onClick={() => setZoomLevel((z) => Math.max(0.6, z - 0.2))}
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                 >
-                  🔍-
+                  <IconZoomOut size={14} />
                 </button>
                 <span style={{ fontSize: '0.75rem', color: '#fff', fontWeight: 600 }}>
                   {Math.round(zoomLevel * 100)}%
@@ -1002,8 +1101,9 @@ export default function ReceiptView({
                   className="scan-control-btn"
                   title="Zoom In"
                   onClick={() => setZoomLevel((z) => Math.min(2.0, z + 0.2))}
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                 >
-                  🔍+
+                  <IconZoomIn size={14} />
                 </button>
                 <button
                   type="button"
@@ -1018,8 +1118,9 @@ export default function ReceiptView({
                   className="scan-control-btn"
                   title="Open Full Resolution Modal"
                   onClick={() => setShowFullImageModal(true)}
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                 >
-                  ⛶ Full
+                  <IconMaximize size={14} />
                 </button>
               </div>
             </div>
@@ -1062,8 +1163,10 @@ export default function ReceiptView({
                       initEditForm(extraction);
                       setIsEditing(true);
                     }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
                   >
-                    ✏️ {extraction ? 'Edit Details & Claim' : 'Enter Details Manually'}
+                    <IconEdit size={13} />
+                    <span>{extraction ? 'Edit Details & Claim' : 'Enter Details Manually'}</span>
                   </button>
                 )}
               </div>
@@ -1095,8 +1198,10 @@ export default function ReceiptView({
                       className="btn btn-gold"
                       onClick={handleTriggerExtraction}
                       disabled={loadingExtraction}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                     >
-                      🚀 Run Structured AI Extraction
+                      <IconSparkles size={14} />
+                      <span>Run Structured AI Extraction</span>
                     </button>
                   )}
                   <button
@@ -1106,8 +1211,10 @@ export default function ReceiptView({
                       initEditForm(null);
                       setIsEditing(true);
                     }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                   >
-                    ✏️ Enter Details &amp; Request Manually
+                    <IconEdit size={14} />
+                    <span>Enter Details &amp; Request Manually</span>
                   </button>
                   {(receipt.ocrStatus === 'FAILED' || receipt.ocr_status === 'FAILED') && (
                     <button
@@ -1115,8 +1222,10 @@ export default function ReceiptView({
                       className="btn btn-gold"
                       onClick={handleRetryOcr}
                       disabled={retryOcrLoading}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                     >
-                      🔄 {retryOcrLoading ? 'Parsing with RapidOCR...' : 'Retry OCR Text Extraction'}
+                      <IconRefresh size={14} className={retryOcrLoading ? 'spin' : ''} />
+                      <span>{retryOcrLoading ? 'Parsing with RapidOCR...' : 'Retry OCR Text Extraction'}</span>
                     </button>
                   )}
                 </div>
@@ -1167,8 +1276,8 @@ export default function ReceiptView({
                     </div>
                   </div>
                   <div className="form-group" style={{ background: 'var(--gold-bg-subtle)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--gold-border-subtle)' }}>
-                    <span className="form-label" style={{ color: 'var(--gold-hover)', fontWeight: 700, fontSize: '0.75rem' }}>
-                      ★ Requested Reimbursement
+                    <span className="form-label" style={{ color: 'var(--gold-hover)', fontWeight: 700, fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <IconStar size={12} color="var(--gold-hover)" /> Requested Reimbursement
                     </span>
                     <div style={{ fontWeight: 800, fontSize: '1.3rem', color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}>
                       {effective.currency || 'INR'} {Number(effective.requestedAmount ?? effective.totalAmount ?? 0).toFixed(2)}
@@ -1185,8 +1294,8 @@ export default function ReceiptView({
                 {/* Employee Request Explanation & Business Justification */}
                 <div style={{ background: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '12px 14px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                    <span className="form-label" style={{ color: 'var(--text-primary)', fontWeight: 700, margin: 0 }}>
-                      📝 Employee Business Purpose &amp; Description
+                    <span className="form-label" style={{ color: 'var(--text-primary)', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <IconFileText size={14} color="var(--text-primary)" /> Employee Business Purpose &amp; Description
                     </span>
                     <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Required for Approval Review</span>
                   </div>
@@ -1233,8 +1342,9 @@ export default function ReceiptView({
             {/* Editable Form Mode (Allows updating OCR details, requested amount, and description) */}
             {isEditing && (
               <form onSubmit={handleSaveConfirmed} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div style={{ background: '#fefce8', border: '1px solid #fef08a', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: '0.8125rem', color: '#854d0e' }}>
-                  ✏️ <strong>Employee Correction &amp; Reimbursement Claim Form:</strong> Modify any values parsed by OCR, adjust your requested claim amount, and explain your business request below.
+                <div style={{ background: '#fefce8', border: '1px solid #fef08a', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: '0.8125rem', color: '#854d0e', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <IconEdit size={16} color="#854d0e" />
+                  <span><strong>Employee Correction &amp; Reimbursement Claim Form:</strong> Modify any values parsed by OCR, adjust your requested claim amount, and explain your business request below.</span>
                 </div>
 
                 <div className="form-grid-2">
@@ -1325,8 +1435,8 @@ export default function ReceiptView({
                     </span>
                   </div>
                   <div className="form-group">
-                    <label className="form-label" style={{ color: 'var(--gold-hover)', fontWeight: 700 }}>
-                      ★ Requested Reimbursement
+                    <label className="form-label" style={{ color: 'var(--gold-hover)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <IconStar size={12} color="var(--gold-hover)" /> Requested Reimbursement
                     </label>
                     <input
                       type="number"
@@ -1381,8 +1491,13 @@ export default function ReceiptView({
                   <button type="button" className="btn btn-outline" onClick={() => setIsEditing(false)}>
                     Cancel
                   </button>
-                  <button type="submit" className="btn btn-dark" disabled={saveLoading}>
-                    {saveLoading ? 'Saving...' : '💾 Save Confirmed Details & Claim'}
+                  <button type="submit" className="btn btn-dark" disabled={saveLoading} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    {saveLoading ? 'Saving...' : (
+                      <>
+                        <IconSave size={14} />
+                        <span>Save Confirmed Details & Claim</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
@@ -1400,8 +1515,14 @@ export default function ReceiptView({
                   className="btn btn-outline btn-sm"
                   onClick={handleRunValidation}
                   disabled={validatingLoading || !extraction}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
                 >
-                  {validatingLoading ? 'Evaluating...' : '⚡ Validate Rules'}
+                  {validatingLoading ? 'Evaluating...' : (
+                    <>
+                      <IconZap size={13} />
+                      <span>Validate Rules</span>
+                    </>
+                  )}
                 </button>
               </div>
 
@@ -1415,7 +1536,13 @@ export default function ReceiptView({
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   <div className="policy-item">
                     <span className="policy-label">
-                      <span>{validation.validationStatus === 'PASSED' ? '✅' : '⚠️'}</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        {validation.validationStatus === 'PASSED' ? (
+                          <IconCheckCircle size={15} color="#10b981" />
+                        ) : (
+                          <IconAlertTriangle size={15} color="#f59e0b" />
+                        )}
+                      </span>
                       <span>Policy Compliance Check</span>
                     </span>
                     <span className={`status-pill ${validation.validationStatus === 'PASSED' ? 'policy-pass' : 'policy-warn'}`}>
@@ -1425,7 +1552,13 @@ export default function ReceiptView({
 
                   <div className="policy-item">
                     <span className="policy-label">
-                      <span>{validation.duplicateStatus === 'NO_MATCH' ? '✅' : '🔍'}</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        {validation.duplicateStatus === 'NO_MATCH' ? (
+                          <IconCheckCircle size={15} color="#10b981" />
+                        ) : (
+                          <IconSearch size={15} color="#3b82f6" />
+                        )}
+                      </span>
                       <span>Duplicate Similarity Check</span>
                     </span>
                     <span className={`status-pill ${validation.duplicateStatus === 'NO_MATCH' ? 'policy-pass' : 'policy-warn'}`}>
@@ -1452,14 +1585,15 @@ export default function ReceiptView({
               {currentState === 'CORRECTION_REQUESTED' && (
                 <div className="alert alert-warning" style={{ borderLeft: '4px solid #f59e0b', background: '#fffbeb', padding: '14px 16px', borderRadius: 'var(--radius-md)' }}>
                   <div style={{ fontWeight: 700, color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>↺ Correction Requested by Manager</span>
+                    <IconUndo size={16} />
+                    <span>Correction Requested by Manager</span>
                   </div>
                   <div style={{ fontSize: '0.875rem', color: '#78350f', marginTop: '6px', fontStyle: 'italic', background: '#fef3c7', padding: '8px 12px', borderRadius: '4px' }}>
                     {latestCorrectionReason ? `"${latestCorrectionReason}"` : 'Please review and adjust your claim details or requested reimbursement amount before resubmission.'}
                   </div>
                   {isEmployee && (
                     <div style={{ fontSize: '0.75rem', color: '#92400e', marginTop: '8px' }}>
-                      Click "✏️ Edit Details &amp; Claim" above to make changes, then click "🚀 Resubmit for Approval" below.
+                      Click "Edit Details &amp; Claim" above to make changes, then click "Resubmit for Approval" below.
                     </div>
                   )}
                 </div>
@@ -1471,15 +1605,18 @@ export default function ReceiptView({
                   <button
                     type="button"
                     className="btn btn-gold btn-lg"
-                    style={{ width: '100%' }}
+                    style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
                     onClick={() => handleWorkflowAction('SUBMIT')}
                     disabled={actionLoading}
                   >
-                    {actionLoading
-                      ? 'Submitting...'
-                      : currentState === 'CORRECTION_REQUESTED'
-                      ? '🚀 Resubmit for Approval'
-                      : '🚀 Submit for Approval'}
+                    {actionLoading ? (
+                      'Submitting...'
+                    ) : (
+                      <>
+                        <IconSend size={15} />
+                        <span>{currentState === 'CORRECTION_REQUESTED' ? 'Resubmit for Approval' : 'Submit for Approval'}</span>
+                      </>
+                    )}
                   </button>
                 </div>
               )}
@@ -1487,7 +1624,7 @@ export default function ReceiptView({
               {/* Informational State Banner when in PENDING_APPROVAL for Employee */}
               {isEmployee && currentState === 'PENDING_APPROVAL' && (
                 <div className="alert alert-info" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ fontSize: '1.25rem' }}>⏳</span>
+                  <IconClock size={20} color="#3b82f6" />
                   <div>
                     <strong>Submitted to Manager:</strong> This claim is currently queued for Manager review and approval.
                   </div>
@@ -1497,7 +1634,7 @@ export default function ReceiptView({
               {/* Informational State Banner when APPROVED */}
               {currentState === 'APPROVED' && (
                 <div className="alert alert-success" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ fontSize: '1.25rem' }}>✅</span>
+                  <IconCheckCircle size={20} color="#10b981" />
                   <div>
                     <strong>Claim Approved:</strong> This expense has been approved by the Manager and is queued for Finance Batch processing.
                   </div>
@@ -1507,7 +1644,7 @@ export default function ReceiptView({
               {/* Informational State Banner when REJECTED */}
               {currentState === 'REJECTED' && (
                 <div className="alert alert-danger" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ fontSize: '1.25rem' }}>❌</span>
+                  <IconXCircle size={20} color="#ef4444" />
                   <div>
                     <strong>Claim Rejected:</strong> This expense claim was rejected during review. Check the audit trail below for details.
                   </div>
@@ -1518,36 +1655,39 @@ export default function ReceiptView({
               {isManager && currentState === 'PENDING_APPROVAL' && (
                 <div style={{ background: '#f8fafc', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
                   <div style={{ fontSize: '0.8125rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-primary)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>🛡️</span>
+                    <IconShield size={16} />
                     <span>Manager Sign-Off Decisions</span>
                   </div>
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                     <button
                       type="button"
                       className="btn btn-gold"
-                      style={{ flex: 1, minWidth: '160px' }}
+                      style={{ flex: 1, minWidth: '160px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
                       onClick={() => setReasonModal({ type: 'APPROVE', reason: '' })}
                       disabled={actionLoading}
                     >
-                      ✓ Approve Claim
+                      <IconCheck size={14} />
+                      <span>Approve Claim</span>
                     </button>
                     <button
                       type="button"
                       className="btn btn-warning"
-                      style={{ minWidth: '180px' }}
+                      style={{ minWidth: '180px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
                       onClick={() => setReasonModal({ type: 'REQUEST_CORRECTION', reason: '' })}
                       disabled={actionLoading}
                     >
-                      ↺ Request Correction
+                      <IconUndo size={14} />
+                      <span>Request Correction</span>
                     </button>
                     <button
                       type="button"
                       className="btn btn-danger"
-                      style={{ minWidth: '120px' }}
+                      style={{ minWidth: '120px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
                       onClick={() => setReasonModal({ type: 'REJECT', reason: '' })}
                       disabled={actionLoading}
                     >
-                      ✕ Reject
+                      <IconX size={14} />
+                      <span>Reject</span>
                     </button>
                   </div>
                 </div>
@@ -1555,8 +1695,9 @@ export default function ReceiptView({
 
               {/* Notice for Manager when voucher is still in DRAFT */}
               {isManager && currentState === 'DRAFT' && (
-                <div className="alert alert-info">
-                  ℹ️ This receipt voucher is currently in <strong>DRAFT</strong>. The employee has not submitted it for review yet. Manager approval decisions become available once submitted.
+                <div className="alert alert-info" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <IconInfo size={16} color="#3b82f6" />
+                  <span>This receipt voucher is currently in <strong>DRAFT</strong>. The employee has not submitted it for review yet. Manager approval decisions become available once submitted.</span>
                 </div>
               )}
 
@@ -1600,8 +1741,8 @@ export default function ReceiptView({
           >
             <div className="modal-header" style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <h4 className="modal-title" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
-                  📷 Full Resolution Voucher Scan — {effective.merchantName || receipt.originalFilename || 'Receipt'}
+                <h4 className="modal-title" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <IconCamera size={16} /> Full Resolution Voucher Scan — {effective.merchantName || receipt.originalFilename || 'Receipt'}
                 </h4>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                   {receipt.originalFilename || receipt.original_filename || 'Receipt Image'} &bull; {((receipt.fileSizeBytes || receipt.file_size_bytes || 0) / 1024).toFixed(1)} KB
@@ -1613,17 +1754,19 @@ export default function ReceiptView({
                   target="_blank"
                   rel="noreferrer"
                   className="btn btn-outline btn-sm"
-                  style={{ fontSize: '0.75rem' }}
+                  style={{ fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                 >
-                  Open in New Tab ↗
+                  <span>Open in New Tab</span>
+                  <IconExternalLink size={12} />
                 </a>
                 <button
                   type="button"
                   className="btn btn-outline btn-sm"
                   onClick={() => setShowFullImageModal(false)}
-                  style={{ fontWeight: 'bold' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                  title="Close"
                 >
-                  ✕
+                  <IconX size={14} />
                 </button>
               </div>
             </div>
@@ -1652,7 +1795,7 @@ export default function ReceiptView({
           <div className="modal-dialog">
             <div className="modal-header">
               <h4 className="modal-title">Raw Tesseract OCR Text</h4>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowRawOcr(false)}>✕</button>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowRawOcr(false)} style={{ display: 'inline-flex', alignItems: 'center' }}><IconX size={14} /></button>
             </div>
             <div className="modal-body">
               <pre style={{ background: '#f8fafc', padding: '14px', borderRadius: 'var(--radius-md)', fontSize: '0.8rem', whiteSpace: 'pre-wrap', maxHeight: '400px', overflowY: 'auto' }}>
@@ -1678,7 +1821,7 @@ export default function ReceiptView({
                   ? 'Reject Expense Claim'
                   : 'Request Expense Correction & Resubmission'}
               </h4>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => setReasonModal(null)}>✕</button>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setReasonModal(null)} style={{ display: 'inline-flex', alignItems: 'center' }}><IconX size={14} /></button>
             </div>
             <div className="modal-body">
               <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>
@@ -1734,9 +1877,9 @@ export default function ReceiptView({
           <div className="modal-dialog" style={{ maxWidth: '440px' }}>
             <div className="modal-header">
               <h4 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#dc2626' }}>
-                <span>🗑️</span> Delete Receipt Voucher?
+                <IconTrash size={18} color="#dc2626" /> Delete Receipt Voucher?
               </h4>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowDeleteConfirm(false)}>✕</button>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowDeleteConfirm(false)} style={{ display: 'inline-flex', alignItems: 'center' }}><IconX size={14} /></button>
             </div>
             <div className="modal-body">
               <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>

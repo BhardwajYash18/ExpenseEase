@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { IconRefresh, IconCheckCircle, IconZap, IconX, IconChevronLeft, IconChevronRight } from './Icons';
 
 /**
  * FinanceBatchView
@@ -352,8 +353,14 @@ function FinanceBatchView({ authToken, currentUser, onSelectBatch }) {
         <div className="table-card">
           <div className="table-header-bar">
             <span className="table-title">Reconciliation Batches ({batches.length})</span>
-            <button type="button" className="btn btn-outline btn-sm" onClick={fetchBatches} disabled={loading}>
-              🔄 Refresh
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={fetchBatches}
+              disabled={loading}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              <IconRefresh size={14} className={loading ? 'spin' : ''} /> Refresh
             </button>
           </div>
 
@@ -425,16 +432,18 @@ function FinanceBatchView({ authToken, currentUser, onSelectBatch }) {
                       className="btn btn-outline btn-sm"
                       disabled={safeBatchPage <= 1}
                       onClick={() => setBatchPage((p) => Math.max(1, p - 1))}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                     >
-                      ◀ Prev
+                      <IconChevronLeft size={11} /> Prev
                     </button>
                     <button
                       type="button"
                       className="btn btn-outline btn-sm"
                       disabled={safeBatchPage >= totalBatchPages}
                       onClick={() => setBatchPage((p) => Math.min(totalBatchPages, p + 1))}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                     >
-                      Next ▶
+                      Next <IconChevronRight size={11} />
                     </button>
                   </div>
                 </div>
@@ -548,16 +557,18 @@ function FinanceBatchView({ authToken, currentUser, onSelectBatch }) {
                       className="btn btn-outline btn-sm"
                       disabled={safeEligiblePage <= 1}
                       onClick={() => setEligiblePage((p) => Math.max(1, p - 1))}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                     >
-                      ◀ Prev
+                      <IconChevronLeft size={11} /> Prev
                     </button>
                     <button
                       type="button"
                       className="btn btn-outline btn-sm"
                       disabled={safeEligiblePage >= totalEligiblePages}
                       onClick={() => setEligiblePage((p) => Math.min(totalEligiblePages, p + 1))}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                     >
-                      Next ▶
+                      Next <IconChevronRight size={11} />
                     </button>
                   </div>
                 </div>
@@ -705,8 +716,8 @@ function FinanceBatchView({ authToken, currentUser, onSelectBatch }) {
               }}
             >
               <div>
-                <div style={{ fontWeight: 700, fontSize: '0.9375rem', color: '#15803d', marginBottom: '2px' }}>
-                  ✓ Finance Review Completed &amp; Batch Locked
+                <div style={{ fontWeight: 700, fontSize: '0.9375rem', color: '#15803d', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <IconCheckCircle size={16} /> Finance Review Completed &amp; Batch Locked
                 </div>
                 <div style={{ fontSize: '0.8125rem', color: '#166534' }}>
                   Reviewed by {selectedBatch.reviewedBy?.name} on {new Date(selectedBatch.reviewedAt).toLocaleString()}.
@@ -724,8 +735,9 @@ function FinanceBatchView({ authToken, currentUser, onSelectBatch }) {
                   className="btn btn-gold"
                   onClick={handleGenerateJournalEntry}
                   disabled={generatingJournal}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                 >
-                  {generatingJournal ? 'Generating...' : '⚡ Generate Balanced Journal Entry'}
+                  {generatingJournal ? 'Generating...' : <><IconZap size={14} /> Generate Balanced Journal Entry</>}
                 </button>
               )}
             </div>
@@ -800,7 +812,9 @@ function FinanceBatchView({ authToken, currentUser, onSelectBatch }) {
               <div className="modal-dialog">
                 <div className="modal-header">
                   <h4 className="modal-title">Complete Finance Review</h4>
-                  <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowReviewModal(false)}>✕</button>
+                  <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowReviewModal(false)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <IconX size={14} />
+                  </button>
                 </div>
                 <div className="modal-body">
                   <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>

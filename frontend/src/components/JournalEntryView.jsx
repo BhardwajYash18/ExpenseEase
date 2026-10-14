@@ -1,4 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import {
+  IconRefresh,
+  IconLock,
+  IconCheckCircle,
+  IconAlertTriangle,
+  IconZap,
+  IconX,
+  IconCopy,
+  IconDownload,
+} from './Icons';
 
 /**
  * JournalEntryView
@@ -331,11 +341,18 @@ function JournalEntryView({ authToken, currentUser }) {
                 type="button"
                 className="btn btn-outline btn-sm"
                 onClick={() => handleDownloadCsv('/api/export/csv', 'all-journal-entries.csv')}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               >
-                &darr; Export All Finalized CSV
+                <IconDownload size={14} /> Export All Finalized CSV
               </button>
-              <button type="button" className="btn btn-outline btn-sm" onClick={fetchEntries} disabled={loading}>
-                🔄 Refresh
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={fetchEntries}
+                disabled={loading}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                <IconRefresh size={14} className={loading ? 'spin' : ''} /> Refresh
               </button>
             </div>
           </div>
@@ -433,8 +450,13 @@ function JournalEntryView({ authToken, currentUser }) {
                   className="btn btn-gold"
                   onClick={() => handleFinalize(selectedEntry.id)}
                   disabled={finalizing || !selectedEntry.isBalanced}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                 >
-                  {finalizing ? 'Finalizing...' : '🔒 Finalize Journal Entry'}
+                  {finalizing ? (
+                    <><IconRefresh size={14} className="spin" /> Finalizing...</>
+                  ) : (
+                    <><IconLock size={14} /> Finalize Journal Entry</>
+                  )}
                 </button>
               )}
 
@@ -444,8 +466,9 @@ function JournalEntryView({ authToken, currentUser }) {
                     type="button"
                     className="btn btn-outline"
                     onClick={() => handleDownloadCsv(`/api/export/journal-entries/${selectedEntry.id}/csv`, `journal-${selectedEntry.id.slice(0, 8)}.csv`)}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                   >
-                    &darr; Export CSV
+                    <IconDownload size={14} /> Export CSV
                   </button>
                   <button
                     type="button"
@@ -471,8 +494,12 @@ function JournalEntryView({ authToken, currentUser }) {
           {/* Zero-Balance Ledger Validator Card (Signature Stitch Screen 4) */}
           <div className={`zero-balance-card ${selectedEntry.isBalanced ? '' : 'imbalanced'}`}>
             <div>
-              <div className={`balance-status-text ${selectedEntry.isBalanced ? '' : 'imbalanced'}`}>
-                {selectedEntry.isBalanced ? '✓ Tally Balanced (0.00 Difference)' : '⚠ Imbalance Detected'}
+              <div className={`balance-status-text ${selectedEntry.isBalanced ? '' : 'imbalanced'}`} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {selectedEntry.isBalanced ? (
+                  <><IconCheckCircle size={16} /> Tally Balanced (0.00 Difference)</>
+                ) : (
+                  <><IconAlertTriangle size={16} /> Imbalance Detected</>
+                )}
               </div>
               <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                 Double-Entry Invariant: {'$\\sum \\text{Debits} = \\sum \\text{Credits}$'} enforced using exact integer-cent arithmetic.
@@ -649,7 +676,7 @@ function JournalEntryView({ authToken, currentUser }) {
           <div className="action-cards-grid">
             {providers.map((p) => (
               <div key={p.provider} className="action-card">
-                <div className="action-card-icon">⚡</div>
+                <div className="action-card-icon"><IconZap size={22} /></div>
                 <div>
                   <h4 className="action-card-title">{p.displayName}</h4>
                   <p className="action-card-desc">{p.description}</p>
@@ -669,8 +696,13 @@ function JournalEntryView({ authToken, currentUser }) {
           <div className="table-card">
             <div className="table-header-bar">
               <span className="table-title">Export &amp; Integration Audit Trail</span>
-              <button type="button" className="btn btn-outline btn-sm" onClick={fetchIntegrationsData}>
-                🔄 Refresh
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={fetchIntegrationsData}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                <IconRefresh size={14} /> Refresh
               </button>
             </div>
 
@@ -716,7 +748,14 @@ function JournalEntryView({ authToken, currentUser }) {
               <h4 className="modal-title">
                 {integrationModal.provider} Provider Payload
               </h4>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => setIntegrationModal(null)}>✕</button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => setIntegrationModal(null)}
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <IconX size={14} />
+              </button>
             </div>
             <div className="modal-body">
               <div className="alert alert-info" style={{ marginBottom: '14px' }}>
@@ -730,13 +769,14 @@ function JournalEntryView({ authToken, currentUser }) {
               <button
                 type="button"
                 className="btn btn-gold"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                 onClick={() => {
                   navigator.clipboard.writeText(JSON.stringify(integrationModal.payload, null, 2));
                   setSuccessMsg('Copied payload to clipboard!');
                   setTimeout(() => setSuccessMsg(null), 3000);
                 }}
               >
-                📋 Copy Payload
+                <IconCopy size={14} /> Copy Payload
               </button>
               <button type="button" className="btn btn-outline" onClick={() => setIntegrationModal(null)}>
                 Close

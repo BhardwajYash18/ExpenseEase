@@ -1,4 +1,5 @@
 import React from 'react';
+import { IconAlertTriangle, IconRefresh, IconHome } from './Icons';
 
 /**
  * ErrorBoundary protects the application from catastrophic blank screens
@@ -31,7 +32,9 @@ export default class ErrorBoundary extends React.Component {
       return (
         <div style={{ maxWidth: '640px', margin: '40px auto', width: '100%', padding: '0 16px' }}>
           <div className="table-card" style={{ padding: '32px', textAlign: 'center' }}>
-            <div style={{ fontSize: '3rem', marginBottom: '12px' }}>⚠️</div>
+            <div style={{ marginBottom: '16px' }}>
+              <IconAlertTriangle size={48} color="var(--gold-hover)" />
+            </div>
             <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
               Something went wrong loading this view
             </h3>
@@ -64,15 +67,17 @@ export default class ErrorBoundary extends React.Component {
                 type="button"
                 className="btn btn-outline"
                 onClick={() => window.location.reload()}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               >
-                🔄 Reload Page
+                <IconRefresh size={14} /> Reload Page
               </button>
               <button
                 type="button"
                 className="btn btn-gold"
                 onClick={this.handleReset}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               >
-                🏠 Return to Dashboard
+                <IconHome size={14} /> Return to Dashboard
               </button>
             </div>
           </div>

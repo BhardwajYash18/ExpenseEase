@@ -1,4 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
+import {
+  IconCamera,
+  IconFolder,
+  IconUpload,
+  IconClock,
+  IconCheckCircle,
+  IconX,
+  IconSend,
+} from './Icons';
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
@@ -330,10 +339,10 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded, autoStart
             <button
               type="button"
               className="btn btn-outline btn-sm"
-              style={{ color: '#fff', borderColor: '#334155' }}
+              style={{ color: '#fff', borderColor: '#334155', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
               onClick={stopLiveCamera}
             >
-              ✕ Close
+              <IconX size={14} /> Close
             </button>
           </div>
 
@@ -380,9 +389,9 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded, autoStart
               className="btn btn-gold btn-lg"
               id="btn-snap-photo"
               onClick={capturePhotoFromStream}
-              style={{ minWidth: '180px' }}
+              style={{ minWidth: '180px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
             >
-              📸 Snap Photo
+              <IconCamera size={18} /> Snap Photo
             </button>
             <button
               type="button"
@@ -423,10 +432,9 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded, autoStart
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '1.5rem',
             }}
           >
-            📸
+            <IconCamera size={26} />
           </div>
           <div>
             <p style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--text-primary)' }}>
@@ -442,8 +450,9 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded, autoStart
               className="btn btn-gold"
               id="btn-choose-file"
               onClick={() => fileInputRef.current?.click()}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             >
-              📁 Browse Files
+              <IconFolder size={16} /> Browse Files
             </button>
             <button
               type="button"
@@ -451,8 +460,9 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded, autoStart
               id="btn-take-photo"
               onClick={startLiveCamera}
               disabled={cameraLoading}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             >
-              {cameraLoading ? 'Starting Camera...' : '📷 Open Camera'}
+              <IconCamera size={16} /> {cameraLoading ? 'Starting Camera...' : 'Open Camera'}
             </button>
           </div>
         </div>
@@ -466,8 +476,8 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded, autoStart
                 {(selectedFile?.size / 1024).toFixed(1)} KB &bull; {selectedFile?.type}
               </div>
             </div>
-            <button type="button" className="btn btn-outline btn-sm" onClick={handleClear} disabled={uploading}>
-              ✕ Remove
+            <button type="button" className="btn btn-outline btn-sm" onClick={handleClear} disabled={uploading} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <IconX size={14} /> Remove
             </button>
           </div>
 
@@ -485,8 +495,13 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded, autoStart
               id="btn-submit-receipt"
               disabled={uploading}
               onClick={handleUpload}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             >
-              {uploading ? 'Processing OCR & Preprocessing...' : '🚀 Submit Receipt for OCR'}
+              {uploading ? (
+                <><IconClock size={16} className="spin" /> Processing OCR & Preprocessing...</>
+              ) : (
+                <><IconSend size={16} /> Submit Receipt for OCR</>
+              )}
             </button>
           </div>
         </div>
@@ -501,8 +516,9 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded, autoStart
 
       {/* Status alert */}
       {uploadProgress && !error && (
-        <div className="alert alert-info" id="receipt-status-alert" style={{ marginTop: '16px' }}>
-          {uploading ? '⏳ ' : '✅ '} {uploadProgress}
+        <div className="alert alert-info" id="receipt-status-alert" style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {uploading ? <IconClock size={16} /> : <IconCheckCircle size={16} />}
+          <span>{uploadProgress}</span>
         </div>
       )}
     </div>

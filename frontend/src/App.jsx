@@ -6,6 +6,30 @@ import FinanceBatchView from './components/FinanceBatchView';
 import JournalEntryView from './components/JournalEntryView';
 import ErrorBoundary from './components/ErrorBoundary';
 import { IS_DEMO_MODE, DEMO_ACCOUNTS } from './config/demoConfig';
+import {
+  IconDashboard,
+  IconCamera,
+  IconReceipt,
+  IconShield,
+  IconBuilding,
+  IconKey,
+  IconLogout,
+  IconLock,
+  IconMenu,
+  IconSearch,
+  IconInfo,
+  IconFileText,
+  IconClock,
+  IconCheckCircle,
+  IconUpload,
+  IconClipboard,
+  IconScale,
+  IconRefresh,
+  IconPlus,
+  IconEye,
+  IconChevronLeft,
+  IconChevronRight,
+} from './components/Icons';
 
 function App() {
   const [backendHealth, setBackendHealth] = useState('checking');
@@ -21,6 +45,8 @@ function App() {
   });
   const [latestReceipt, setLatestReceipt] = useState(null);
   const [receiptsList, setReceiptsList] = useState([]);
+  const [personalReceiptsList, setPersonalReceiptsList] = useState([]);
+  const [managerLedgerTab, setManagerLedgerTab] = useState('PENDING_APPROVALS'); // 'PENDING_APPROVALS' or 'PERSONAL'
   const [loadingReceipts, setLoadingReceipts] = useState(false);
 
   // Active navigation view: 'dashboard' | 'upload' | 'receipt-detail' | 'approvals' | 'finance' | 'mappings' | 'integrations'
@@ -55,10 +81,10 @@ function App() {
   }, []);
 
 
-  // Login form states (isolated to demo configuration in development mode)
-  const [email, setEmail] = useState(IS_DEMO_MODE ? DEMO_ACCOUNTS.EMPLOYEE.email : '');
-  const [password, setPassword] = useState(IS_DEMO_MODE ? DEMO_ACCOUNTS.EMPLOYEE.password : '');
-  const [slug, setSlug] = useState(IS_DEMO_MODE ? DEMO_ACCOUNTS.EMPLOYEE.slug : '');
+  // Single unified login form states
+  const [loginIdentifier, setLoginIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+  const [slug, setSlug] = useState('demo');
   const [loginError, setLoginError] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
 
@@ -67,6 +93,7 @@ function App() {
     if (!token) return;
     setLoadingReceipts(true);
     try {
+      // 1. Fetch submitted tenant receipts (or own receipts if Employee)
       const res = await fetch('/api/receipts', {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -74,8 +101,18 @@ function App() {
         const data = await res.json();
         const list = data.receipts || [];
         setReceiptsList(list);
-        if (list.length > 0 && !latestReceipt) {
-          setLatestReceipt(list[0]);
+      }
+
+      // 2. Fetch personal upload history (drafts + own submissions for current unique ID)
+      const personalRes = await fetch('/api/receipts?scope=personal', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (personalRes.ok) {
+        const personalData = await personalRes.json();
+        const personalList = personalData.receipts || [];
+        setPersonalReceiptsList(personalList);
+        if (personalList.length > 0 && !latestReceipt) {
+          setLatestReceipt(personalList[0]);
         }
       }
     } catch (err) {
@@ -135,7 +172,13 @@ function App() {
     setLoginLoading(true);
     setLoginError(null);
 
-    const creds = customCreds || { email, password, slug };
+    const identifier = (customCreds?.loginId || customCreds?.email || loginIdentifier || '').trim();
+    const creds = customCreds || {
+      email: identifier,
+      loginId: identifier,
+      password,
+      slug: (slug || 'demo').trim(),
+    };
 
     try {
       const res = await fetch('/api/auth/login', {
@@ -154,11 +197,11 @@ function App() {
         localStorage.setItem('user', JSON.stringify(data.user));
       }
 
-      // Default landing view based on role
-      if (data.user.role === 'MANAGER') {
-        setActiveNav('approvals');
-      } else if (data.user.role === 'FINANCE') {
+      // Default landing view based on database-assigned role
+      if (data.user.role === 'FINANCE') {
         setActiveNav('finance');
+      } else if (data.user.role === 'MANAGER') {
+        setActiveNav('dashboard');
       } else {
         setActiveNav('dashboard');
       }
@@ -178,16 +221,6 @@ function App() {
     setActiveNav('dashboard');
   };
 
-  // Helper quick login for reviewers / testers using isolated demo accounts
-  const handleQuickLogin = (roleType) => {
-    if (!IS_DEMO_MODE || !DEMO_ACCOUNTS[roleType]) return;
-    const { email: emailToUse, password: pwdToUse, slug: slugToUse } = DEMO_ACCOUNTS[roleType];
-    setEmail(emailToUse);
-    setPassword(pwdToUse);
-    setSlug(slugToUse);
-    handleLogin(null, { email: emailToUse, password: pwdToUse, slug: slugToUse });
-  };
-
   // Calculate real dashboard statistics from receiptsList
   const totalSubmittedCount = receiptsList.length;
   const pendingCount = receiptsList.filter((r) => (r.workflow_state || r.workflowState) === 'PENDING_APPROVAL').length;
@@ -205,17 +238,24 @@ function App() {
         setActiveNav('dashboard');
       }
     } else if (currentUser.role === 'MANAGER') {
-      if (activeNav === 'upload' || activeNav === 'finance' || activeNav === 'receipt-detail') {
-        setActiveNav('approvals');
+      if (activeNav === 'finance') {
+        setActiveNav('dashboard');
       }
     } else if (currentUser.role === 'FINANCE') {
-      if (activeNav === 'upload' || activeNav === 'approvals' || activeNav === 'receipt-detail') {
+      if (activeNav === 'upload' || activeNav === 'approvals') {
         setActiveNav('finance');
       }
     }
   }, [currentUser?.role, activeNav]);
 
-  const filteredReceipts = Array.isArray(receiptsList) ? receiptsList : [];
+  // Active ledger dataset based on role and tab:
+  // Managers toggle between submitted tenant claims pool and their personal upload history.
+  // Employees always view their personal upload history.
+  const activeLedgerReceipts = (currentUser?.role === 'MANAGER' && managerLedgerTab === 'PERSONAL')
+    ? personalReceiptsList
+    : (currentUser?.role === 'EMPLOYEE' ? (personalReceiptsList.length > 0 ? personalReceiptsList : receiptsList) : receiptsList);
+
+  const filteredReceipts = Array.isArray(activeLedgerReceipts) ? activeLedgerReceipts : [];
   const totalLedger = filteredReceipts.length;
   const totalLedgerPages = Math.ceil(totalLedger / ledgerPageSize) || 1;
   const safeLedgerPage = Math.min(Math.max(ledgerPage, 1), totalLedgerPages);
@@ -223,6 +263,9 @@ function App() {
     (safeLedgerPage - 1) * ledgerPageSize,
     safeLedgerPage * ledgerPageSize
   );
+
+  // For inspection/editing personal drafts, use the user's personal upload history
+  const userInspectList = personalReceiptsList.length > 0 ? personalReceiptsList : receiptsList;
 
   return (
     <div className="app-shell">
@@ -256,7 +299,7 @@ function App() {
             title={sidebarCollapsed ? "Expand Sidebar (Ctrl+B)" : "Collapse Sidebar (Ctrl+B)"}
             aria-label={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
           >
-            {sidebarCollapsed ? '▶' : '◀'}
+            {sidebarCollapsed ? <IconChevronRight size={14} /> : <IconChevronLeft size={14} />}
           </button>
         </div>
 
@@ -276,12 +319,12 @@ function App() {
                         setMobileMenuOpen(false);
                       }}
                     >
-                      <span className="nav-item-icon">📊</span>
+                      <span className="nav-item-icon"><IconDashboard size={18} /></span>
                       {!sidebarCollapsed && <span>Dashboard</span>}
                     </button>
                   </li>
 
-                  {/* EMPLOYEE ONLY */}
+                  {/* EMPLOYEE: Can only submit and inspect receipts */}
                   {currentUser.role === 'EMPLOYEE' && (
                     <>
                       <li>
@@ -294,7 +337,7 @@ function App() {
                             setMobileMenuOpen(false);
                           }}
                         >
-                          <span className="nav-item-icon">📸</span>
+                          <span className="nav-item-icon"><IconCamera size={18} /></span>
                           {!sidebarCollapsed && <span>Submit Expense</span>}
                         </button>
                       </li>
@@ -308,33 +351,63 @@ function App() {
                             setMobileMenuOpen(false);
                           }}
                         >
-                          <span className="nav-item-icon">🧾</span>
+                          <span className="nav-item-icon"><IconReceipt size={18} /></span>
                           {!sidebarCollapsed && <span>Receipt OCR &amp; Inspect</span>}
                         </button>
                       </li>
                     </>
                   )}
 
-                  {/* MANAGER ONLY */}
+                  {/* MANAGER: Can submit receipts AND manage/review approvals */}
                   {currentUser.role === 'MANAGER' && (
-                    <li>
-                      <button
-                        type="button"
-                        className={`nav-item-btn ${activeNav === 'approvals' ? 'active' : ''}`}
-                        title="Manager Approvals"
-                        onClick={() => {
-                          setActiveNav('approvals');
-                          setMobileMenuOpen(false);
-                        }}
-                      >
-                        <span className="nav-item-icon">🛡️</span>
-                        {!sidebarCollapsed && <span>Manager Approvals</span>}
-                        {pendingCount > 0 && <span className="nav-item-badge">{pendingCount}</span>}
-                      </button>
-                    </li>
+                    <>
+                      <li>
+                        <button
+                          type="button"
+                          className={`nav-item-btn ${activeNav === 'upload' ? 'active' : ''}`}
+                          title="Submit Expense"
+                          onClick={() => {
+                            setActiveNav('upload');
+                            setMobileMenuOpen(false);
+                          }}
+                        >
+                          <span className="nav-item-icon"><IconCamera size={18} /></span>
+                          {!sidebarCollapsed && <span>Submit Expense</span>}
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          className={`nav-item-btn ${activeNav === 'receipt-detail' ? 'active' : ''}`}
+                          title="Receipt OCR & Inspect"
+                          onClick={() => {
+                            setActiveNav('receipt-detail');
+                            setMobileMenuOpen(false);
+                          }}
+                        >
+                          <span className="nav-item-icon"><IconReceipt size={18} /></span>
+                          {!sidebarCollapsed && <span>Receipt OCR &amp; Inspect</span>}
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          className={`nav-item-btn ${activeNav === 'approvals' ? 'active' : ''}`}
+                          title="Manager Approvals"
+                          onClick={() => {
+                            setActiveNav('approvals');
+                            setMobileMenuOpen(false);
+                          }}
+                        >
+                          <span className="nav-item-icon"><IconShield size={18} /></span>
+                          {!sidebarCollapsed && <span>Manager Approvals</span>}
+                          {pendingCount > 0 && <span className="nav-item-badge">{pendingCount}</span>}
+                        </button>
+                      </li>
+                    </>
                   )}
 
-                  {/* FINANCE ONLY */}
+                  {/* FINANCE: Reviews approved batches and accounting entries */}
                   {currentUser.role === 'FINANCE' && (
                     <li>
                       <button
@@ -346,7 +419,7 @@ function App() {
                           setMobileMenuOpen(false);
                         }}
                       >
-                        <span className="nav-item-icon">🏛️</span>
+                        <span className="nav-item-icon"><IconBuilding size={18} /></span>
                         {!sidebarCollapsed && <span>Finance Operations</span>}
                       </button>
                     </li>
@@ -355,7 +428,7 @@ function App() {
               ) : (
                 <li>
                   <div className="nav-item-btn active" style={{ cursor: 'default', opacity: 0.85 }} title="Authentication">
-                    <span className="nav-item-icon">🔑</span>
+                    <span className="nav-item-icon"><IconKey size={18} /></span>
                     {!sidebarCollapsed && <span>Authentication</span>}
                   </div>
                 </li>
@@ -408,14 +481,14 @@ function App() {
                     onClick={handleLogout}
                     title="Sign Out"
                   >
-                    🚪
+                    <IconLogout size={16} />
                   </button>
                 </>
               )}
             </div>
           ) : (
             <div style={{ fontSize: '0.8rem', color: '#64748b', textAlign: 'center' }}>
-              {!sidebarCollapsed ? 'Not Signed In' : '🔒'}
+              {!sidebarCollapsed ? 'Not Signed In' : <IconLock size={14} />}
             </div>
           )}
         </div>
@@ -433,10 +506,10 @@ function App() {
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               aria-label="Toggle Navigation"
             >
-              ☰
+              <IconMenu size={20} />
             </button>
             <div className="search-box">
-              <span className="search-icon">🔍</span>
+              <span className="search-icon"><IconSearch size={16} /></span>
               <input
                 type="text"
                 className="search-input"
@@ -454,7 +527,7 @@ function App() {
               <span>PostgreSQL RLS Active</span>
             </div>
 
-            {currentUser && currentUser.role === 'EMPLOYEE' && (
+            {currentUser && (currentUser.role === 'EMPLOYEE' || currentUser.role === 'MANAGER') && (
               <button
                 type="button"
                 className="btn btn-gold"
@@ -493,41 +566,6 @@ function App() {
                   </p>
                 </div>
 
-                {/* Quick Role Fill Presets for Review / Evaluation (Isolated to Development Mode) */}
-                {IS_DEMO_MODE && (
-                  <div style={{ marginBottom: '20px', padding: '12px', background: '#f8fafc', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                      1-Click Demo Evaluation Presets (Dev Only):
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        onClick={() => handleQuickLogin('EMPLOYEE')}
-                        disabled={loginLoading}
-                      >
-                        Employee
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        onClick={() => handleQuickLogin('MANAGER')}
-                        disabled={loginLoading}
-                      >
-                        Manager
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        onClick={() => handleQuickLogin('FINANCE')}
-                        disabled={loginLoading}
-                      >
-                        Finance
-                      </button>
-                    </div>
-                  </div>
-                )}
-
                 {loginError && (
                   <div className="alert alert-danger" style={{ marginBottom: '16px' }}>
                     {loginError}
@@ -542,17 +580,20 @@ function App() {
                       className="form-input"
                       value={slug}
                       onChange={(e) => setSlug(e.target.value)}
+                      placeholder="e.g. demo"
                       required
                     />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Email Address</label>
+                    <label className="form-label">Unique Login ID or Email</label>
                     <input
-                      type="email"
+                      type="text"
                       className="form-input"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      value={loginIdentifier}
+                      onChange={(e) => setLoginIdentifier(e.target.value)}
+                      placeholder="Enter unique login ID or email"
                       required
+                      autoFocus
                     />
                   </div>
                   <div className="form-group">
@@ -562,6 +603,7 @@ function App() {
                       className="form-input"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
                       required
                     />
                   </div>
@@ -575,6 +617,23 @@ function App() {
                     {loginLoading ? 'Signing In...' : 'Sign In to Workspace'}
                   </button>
                 </form>
+
+                {/* Subtle account hints for evaluation (No separate role login buttons) */}
+                {IS_DEMO_MODE && (
+                  <div style={{ marginTop: '20px', padding: '12px 14px', background: '#f8fafc', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px', display: 'flex', alignItems: 'center' }}>
+                      <IconInfo size={14} style={{ marginRight: 6, color: 'var(--gold-hover)' }} /> Available Accounts in Demo Tenant:
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontFamily: 'monospace' }}>
+                      <div>&bull; Employee: <strong>employee@expenseease.local</strong> (pwd: employee123)</div>
+                      <div>&bull; Manager: <strong>manager@expenseease.local</strong> (pwd: manager123)</div>
+                      <div>&bull; Finance: <strong>finance@expenseease.local</strong> (pwd: finance123)</div>
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                      Roles and permissions are bound to individual unique login IDs in the database.
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -587,7 +646,7 @@ function App() {
                     <div className="stat-card">
                       <div className="stat-header">
                         <span className="stat-title">Total Submitted</span>
-                        <span className="stat-icon">📄</span>
+                        <span className="stat-icon"><IconFileText size={20} /></span>
                       </div>
                       <div className="stat-body">
                         <div className="stat-value">{totalSubmittedCount} claims</div>
@@ -598,7 +657,7 @@ function App() {
                     <div className="stat-card">
                       <div className="stat-header">
                         <span className="stat-title">Pending Approval</span>
-                        <span className="stat-icon">⏳</span>
+                        <span className="stat-icon"><IconClock size={20} /></span>
                       </div>
                       <div className="stat-body">
                         <div className="stat-value">{pendingCount} claims</div>
@@ -609,7 +668,7 @@ function App() {
                     <div className="stat-card">
                       <div className="stat-header">
                         <span className="stat-title">Approved &amp; Settled</span>
-                        <span className="stat-icon">✅</span>
+                        <span className="stat-icon"><IconCheckCircle size={20} /></span>
                       </div>
                       <div className="stat-body">
                         <div className="stat-value">{approvedCount} claims</div>
@@ -620,7 +679,7 @@ function App() {
                     <div className="stat-card">
                       <div className="stat-header">
                         <span className="stat-title">Tenant Organization</span>
-                        <span className="stat-icon">🏢</span>
+                        <span className="stat-icon"><IconBuilding size={20} /></span>
                       </div>
                       <div className="stat-body">
                         <div className="stat-value" style={{ fontSize: '1.25rem' }}>{slug}</div>
@@ -634,7 +693,7 @@ function App() {
                     {currentUser.role === 'EMPLOYEE' && (
                       <>
                         <div className="action-card" onClick={() => setActiveNav('upload')}>
-                          <div className="action-card-icon">📤</div>
+                          <div className="action-card-icon"><IconUpload size={22} /></div>
                           <div>
                             <h4 className="action-card-title">Upload Receipt Image</h4>
                             <p className="action-card-desc">
@@ -647,7 +706,7 @@ function App() {
                         </div>
 
                         <div className="action-card" onClick={() => setActiveNav('upload')}>
-                          <div className="action-card-icon">📷</div>
+                          <div className="action-card-icon"><IconCamera size={22} /></div>
                           <div>
                             <h4 className="action-card-title">Snap with Camera</h4>
                             <p className="action-card-desc">
@@ -660,7 +719,7 @@ function App() {
                         </div>
 
                         <div className="action-card" onClick={() => setActiveNav('receipt-detail')}>
-                          <div className="action-card-icon">🔍</div>
+                          <div className="action-card-icon"><IconSearch size={22} /></div>
                           <div>
                             <h4 className="action-card-title">Check Submission Status</h4>
                             <p className="action-card-desc">
@@ -676,21 +735,34 @@ function App() {
 
                     {currentUser.role === 'MANAGER' && (
                       <>
+                        <div className="action-card" onClick={() => setActiveNav('upload')}>
+                          <div className="action-card-icon"><IconUpload size={22} /></div>
+                          <div>
+                            <h4 className="action-card-title">Submit Personal Expense</h4>
+                            <p className="action-card-desc">
+                              Upload receipt image or snap with camera to submit your own claims for peer approval.
+                            </p>
+                          </div>
+                          <button type="button" className="btn btn-gold btn-sm" style={{ marginTop: 'auto' }}>
+                            Submit Expense &rarr;
+                          </button>
+                        </div>
+
                         <div className="action-card" onClick={() => setActiveNav('approvals')}>
-                          <div className="action-card-icon">🛡️</div>
+                          <div className="action-card-icon"><IconShield size={22} /></div>
                           <div>
                             <h4 className="action-card-title">Manager Approvals Queue</h4>
                             <p className="action-card-desc">
                               Review pending claims ({pendingCount} awaiting review), verify policy compliance, and sign off decisions.
                             </p>
                           </div>
-                          <button type="button" className="btn btn-gold btn-sm" style={{ marginTop: 'auto' }}>
+                          <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 'auto' }}>
                             Open Approvals Queue &rarr;
                           </button>
                         </div>
 
                         <div className="action-card" onClick={() => setActiveNav('approvals')}>
-                          <div className="action-card-icon">📋</div>
+                          <div className="action-card-icon"><IconClipboard size={22} /></div>
                           <div>
                             <h4 className="action-card-title">Policy &amp; Audit Review</h4>
                             <p className="action-card-desc">
@@ -707,7 +779,7 @@ function App() {
                     {currentUser.role === 'FINANCE' && (
                       <>
                         <div className="action-card" onClick={() => setActiveNav('finance')}>
-                          <div className="action-card-icon">🏛️</div>
+                          <div className="action-card-icon"><IconBuilding size={22} /></div>
                           <div>
                             <h4 className="action-card-title">Finance Batches</h4>
                             <p className="action-card-desc">
@@ -720,7 +792,7 @@ function App() {
                         </div>
 
                         <div className="action-card" onClick={() => setActiveNav('finance')}>
-                          <div className="action-card-icon">⚖️</div>
+                          <div className="action-card-icon"><IconScale size={22} /></div>
                           <div>
                             <h4 className="action-card-title">Journal Entries &amp; Export</h4>
                             <p className="action-card-desc">
@@ -737,11 +809,65 @@ function App() {
 
                   {/* Recent Submissions Ledger Table */}
                   <div className="table-card">
+                    {/* For Managers: Tab Switcher between Pending Submitted Approvals and Personal Upload History */}
+                    {currentUser.role === 'MANAGER' && (
+                      <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-subtle)', padding: '0 16px', background: '#f8fafc' }}>
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          style={{
+                            border: 'none',
+                            borderRadius: 0,
+                            padding: '10px 14px',
+                            fontWeight: 600,
+                            background: 'none',
+                            borderBottom: managerLedgerTab === 'PENDING_APPROVALS' ? '2px solid var(--gold-primary)' : '2px solid transparent',
+                            color: managerLedgerTab === 'PENDING_APPROVALS' ? 'var(--gold-hover)' : 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}
+                          onClick={() => { setManagerLedgerTab('PENDING_APPROVALS'); setLedgerPage(1); }}
+                        >
+                          <IconClock size={15} /> Pending Approvals ({receiptsList.length})
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          style={{
+                            border: 'none',
+                            borderRadius: 0,
+                            padding: '10px 14px',
+                            fontWeight: 600,
+                            background: 'none',
+                            borderBottom: managerLedgerTab === 'PERSONAL' ? '2px solid var(--gold-primary)' : '2px solid transparent',
+                            color: managerLedgerTab === 'PERSONAL' ? 'var(--gold-hover)' : 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}
+                          onClick={() => { setManagerLedgerTab('PERSONAL'); setLedgerPage(1); }}
+                        >
+                          <IconUpload size={15} /> My Upload History ({personalReceiptsList.length})
+                        </button>
+                      </div>
+                    )}
+
                     <div className="table-header-bar">
                       <div>
-                        <span className="table-title">Recent Submissions Ledger</span>
+                        <span className="table-title">
+                          {currentUser.role === 'EMPLOYEE'
+                            ? 'My Upload History'
+                            : (managerLedgerTab === 'PERSONAL' ? 'My Upload History' : 'Pending Approvals Queue')}
+                        </span>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                          {currentUser.role === 'EMPLOYEE' ? 'Your personal expense vouchers' : 'Tenant expense submissions pool'}
+                          {currentUser.role === 'EMPLOYEE'
+                            ? 'Your personal expense vouchers and drafts'
+                            : (managerLedgerTab === 'PERSONAL'
+                                ? 'Receipt vouchers & drafts uploaded by your unique login ID'
+                                : 'Pending submitted expense claims awaiting manager sign-off')}
                         </div>
                       </div>
                       <button
@@ -749,14 +875,20 @@ function App() {
                         className="btn btn-outline btn-sm"
                         onClick={() => fetchReceipts(authToken)}
                         disabled={loadingReceipts}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                       >
-                        {loadingReceipts ? 'Refreshing...' : '🔄 Refresh Ledger'}
+                        <IconRefresh size={14} className={loadingReceipts ? 'spin' : ''} />
+                        {loadingReceipts ? 'Refreshing...' : 'Refresh Ledger'}
                       </button>
                     </div>
 
                     {filteredReceipts.length === 0 ? (
                       <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                        No expense receipts found. {currentUser.role === 'EMPLOYEE' ? 'Click "Submit Expense" to upload your first receipt.' : 'No receipts uploaded in this tenant yet.'}
+                        {currentUser.role === 'EMPLOYEE'
+                          ? 'No expense receipts found in your upload history. Click "Submit Expense" to upload your first receipt.'
+                          : (managerLedgerTab === 'PERSONAL'
+                              ? 'You have not uploaded any personal receipts or drafts yet.'
+                              : 'No claims currently pending manager approval.')}
                       </div>
                     ) : (
                       <>
@@ -816,7 +948,7 @@ function App() {
                                         className="btn btn-outline btn-sm"
                                         onClick={() => {
                                           setLatestReceipt(r);
-                                          if (currentUser.role === 'MANAGER') {
+                                          if (currentUser.role === 'MANAGER' && managerLedgerTab === 'PENDING_APPROVALS') {
                                             setActiveNav('approvals');
                                           } else if (currentUser.role === 'FINANCE') {
                                             setActiveNav('finance');
@@ -824,8 +956,10 @@ function App() {
                                             setActiveNav('receipt-detail');
                                           }
                                         }}
+                                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                                       >
-                                        Inspect &rarr;
+                                        <IconEye size={13} />
+                                        <span>Inspect &rarr;</span>
                                       </button>
                                     </td>
                                   </tr>
@@ -875,11 +1009,11 @@ function App() {
                             <button
                               type="button"
                               className="btn btn-outline btn-sm"
-                              style={{ padding: '3px 8px', fontSize: '0.75rem' }}
+                              style={{ padding: '3px 8px', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                               disabled={safeLedgerPage <= 1}
                               onClick={() => setLedgerPage((p) => Math.max(1, p - 1))}
                             >
-                              ◀ Prev
+                              <IconChevronLeft size={11} /> Prev
                             </button>
                             <span>
                               Page {safeLedgerPage} of {totalLedgerPages}
@@ -887,11 +1021,11 @@ function App() {
                             <button
                               type="button"
                               className="btn btn-outline btn-sm"
-                              style={{ padding: '3px 8px', fontSize: '0.75rem' }}
+                              style={{ padding: '3px 8px', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                               disabled={safeLedgerPage >= totalLedgerPages}
                               onClick={() => setLedgerPage((p) => Math.min(totalLedgerPages, p + 1))}
                             >
-                              Next ▶
+                              Next <IconChevronRight size={11} />
                             </button>
                           </div>
                         </div>
@@ -920,7 +1054,7 @@ function App() {
               {/* VIEW 3: RECEIPT OCR & SPLIT INSPECTOR (Stitch Screen 2) */}
               {activeNav === 'receipt-detail' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  {receiptsList.length > 0 && (
+                  {userInspectList.length > 0 && (
                     <div className="table-card" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
@@ -931,11 +1065,11 @@ function App() {
                           style={{ width: 'auto', minWidth: '280px' }}
                           value={latestReceipt?.id || ''}
                           onChange={(e) => {
-                            const found = receiptsList.find((r) => r.id === e.target.value);
+                            const found = userInspectList.find((r) => r.id === e.target.value);
                             if (found) setLatestReceipt(found);
                           }}
                         >
-                          {receiptsList.map((r) => (
+                          {userInspectList.map((r) => (
                             <option key={r.id} value={r.id}>
                               {r.original_filename || r.originalFilename || 'Receipt'} &bull; ID: {(r.id || '').slice(0, 8)}... ({r.workflow_state || r.workflowState || 'DRAFT'})
                             </option>
@@ -952,8 +1086,9 @@ function App() {
                             setAutoStartCamera(true);
                             setActiveNav('upload');
                           }}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                         >
-                          📷 Retake Picture
+                          <IconCamera size={14} /> Retake Picture
                         </button>
                         <button
                           type="button"
@@ -963,8 +1098,9 @@ function App() {
                             setAutoStartCamera(false);
                             setActiveNav('upload');
                           }}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                         >
-                          ➕ Add More Receipts
+                          <IconPlus size={14} /> Add More Receipts
                         </button>
                       </div>
                     </div>
@@ -987,7 +1123,9 @@ function App() {
                       onReceiptDeleted={(deletedId) => {
                         const remaining = receiptsList.filter((r) => r.id !== deletedId);
                         setReceiptsList(remaining);
-                        setLatestReceipt(remaining.length > 0 ? remaining[0] : null);
+                        const personalRem = personalReceiptsList.filter((r) => r.id !== deletedId);
+                        setPersonalReceiptsList(personalRem);
+                        setLatestReceipt(personalRem.length > 0 ? personalRem[0] : (remaining.length > 0 ? remaining[0] : null));
                         fetchReceipts(authToken);
                       }}
                     />

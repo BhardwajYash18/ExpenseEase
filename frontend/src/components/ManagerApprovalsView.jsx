@@ -1,5 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import ReceiptView from './ReceiptView';
+import {
+  IconClock,
+  IconCheckCircle,
+  IconUndo,
+  IconXCircle,
+  IconRefresh,
+  IconChevronLeft,
+  IconChevronRight,
+  IconFolder,
+  IconUser,
+  IconLock,
+  IconClipboard,
+  IconSearch,
+  IconSplit,
+  IconMaximize,
+  IconShield,
+} from './Icons';
 
 export default function ManagerApprovalsView({ authToken, currentUser, onSelectReceipt }) {
   const [receipts, setReceipts] = useState([]);
@@ -51,28 +68,25 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
   }, [authToken]);
 
   // Derived metrics from all tenant receipts
+  // Metrics derived from pending submitted approvals queue
   const totalClaims = receipts.length;
-  const pendingClaims = receipts.filter(
-    (r) => (r.workflow_state || r.workflowState) === 'PENDING_APPROVAL'
+  const policyPassedClaims = receipts.filter(
+    (r) => r.validationStatus === 'PASSED'
   );
-  const approvedClaims = receipts.filter(
-    (r) => (r.workflow_state || r.workflowState) === 'APPROVED'
+  const policyFlaggedClaims = receipts.filter(
+    (r) => r.validationStatus && r.validationStatus !== 'PASSED'
   );
-  const correctionClaims = receipts.filter(
-    (r) => (r.workflow_state || r.workflowState) === 'CORRECTION_REQUESTED'
-  );
-  const rejectedClaims = receipts.filter(
-    (r) => (r.workflow_state || r.workflowState) === 'REJECTED'
-  );
+  const queueTotalAmount = receipts.reduce((sum, r) => {
+    const val = r.requestedAmount !== null && r.requestedAmount !== undefined
+      ? r.requestedAmount
+      : (r.totalAmount || 0);
+    return sum + (typeof val === 'number' ? val : 0);
+  }, 0);
 
   // Filtered dataset
   const filteredReceipts = receipts.filter((r) => {
-    const st = r.workflow_state || r.workflowState || 'DRAFT';
-    if (filterStatus === 'PENDING' && st !== 'PENDING_APPROVAL') return false;
-    if (filterStatus === 'APPROVED' && st !== 'APPROVED') return false;
-    if (filterStatus === 'CORRECTION' && st !== 'CORRECTION_REQUESTED') return false;
-    if (filterStatus === 'REJECTED' && st !== 'REJECTED') return false;
-    if (filterStatus === 'DRAFT' && st !== 'DRAFT') return false;
+    if (filterStatus === 'POLICY_PASS' && r.validationStatus !== 'PASSED') return false;
+    if (filterStatus === 'POLICY_FLAG' && (!r.validationStatus || r.validationStatus === 'PASSED')) return false;
 
     if (filterText) {
       const search = filterText.toLowerCase();
@@ -103,77 +117,72 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      {/* Top Manager Metrics Row (Stitch Screen 3) */}
+      {/* Top Manager Metrics Row: Pending Submitted Approvals Queue */}
       <div className="stats-grid">
         <div
-          className={`stat-card ${filterStatus === 'PENDING' ? 'active-metric-card' : ''}`}
+          className={`stat-card ${filterStatus === 'ALL' ? 'active-metric-card' : ''}`}
           style={{ cursor: 'pointer' }}
           onClick={() => {
-            setFilterStatus('PENDING');
+            setFilterStatus('ALL');
             setCurrentPage(1);
           }}
         >
           <div className="stat-header">
-            <span className="stat-title">Pending Claims</span>
-            <span className="stat-icon">⏳</span>
+            <span className="stat-title">Pending Approvals</span>
+            <span className="stat-icon"><IconClock size={20} /></span>
           </div>
           <div className="stat-body">
-            <div className="stat-value">{pendingClaims.length}</div>
-            <span className="stat-subtext status-pill pending">Action Required</span>
+            <div className="stat-value">{totalClaims}</div>
+            <span className="stat-subtext status-pill pending">Awaiting Sign-off</span>
           </div>
         </div>
 
         <div
-          className={`stat-card ${filterStatus === 'APPROVED' ? 'active-metric-card' : ''}`}
+          className={`stat-card ${filterStatus === 'POLICY_PASS' ? 'active-metric-card' : ''}`}
           style={{ cursor: 'pointer' }}
           onClick={() => {
-            setFilterStatus('APPROVED');
+            setFilterStatus('POLICY_PASS');
             setCurrentPage(1);
           }}
         >
           <div className="stat-header">
-            <span className="stat-title">Approved Claims</span>
-            <span className="stat-icon">✅</span>
+            <span className="stat-title">Policy Compliant</span>
+            <span className="stat-icon"><IconCheckCircle size={20} /></span>
           </div>
           <div className="stat-body">
-            <div className="stat-value">{approvedClaims.length}</div>
-            <span className="stat-subtext status-pill approved">Within Policy</span>
+            <div className="stat-value">{policyPassedClaims.length}</div>
+            <span className="stat-subtext status-pill approved">Within Guidelines</span>
           </div>
         </div>
 
         <div
-          className={`stat-card ${filterStatus === 'CORRECTION' ? 'active-metric-card' : ''}`}
+          className={`stat-card ${filterStatus === 'POLICY_FLAG' ? 'active-metric-card' : ''}`}
           style={{ cursor: 'pointer' }}
           onClick={() => {
-            setFilterStatus('CORRECTION');
+            setFilterStatus('POLICY_FLAG');
             setCurrentPage(1);
           }}
         >
           <div className="stat-header">
-            <span className="stat-title">Needs Correction</span>
-            <span className="stat-icon">↺</span>
+            <span className="stat-title">Review Flags</span>
+            <span className="stat-icon"><IconShield size={20} /></span>
           </div>
           <div className="stat-body">
-            <div className="stat-value">{correctionClaims.length}</div>
-            <span className="stat-subtext status-pill correction">Returned to Submitter</span>
+            <div className="stat-value">{policyFlaggedClaims.length}</div>
+            <span className="stat-subtext status-pill correction">Requires Verification</span>
           </div>
         </div>
 
-        <div
-          className={`stat-card ${filterStatus === 'REJECTED' ? 'active-metric-card' : ''}`}
-          style={{ cursor: 'pointer' }}
-          onClick={() => {
-            setFilterStatus('REJECTED');
-            setCurrentPage(1);
-          }}
-        >
+        <div className="stat-card">
           <div className="stat-header">
-            <span className="stat-title">Rejected Claims</span>
-            <span className="stat-icon">❌</span>
+            <span className="stat-title">Queue Claim Total</span>
+            <span className="stat-icon"><IconClipboard size={20} /></span>
           </div>
           <div className="stat-body">
-            <div className="stat-value">{rejectedClaims.length}</div>
-            <span className="stat-subtext status-pill rejected">Non-compliant</span>
+            <div className="stat-value" style={{ fontSize: '1.35rem' }}>
+              INR {queueTotalAmount.toFixed(2)}
+            </div>
+            <span className="stat-subtext status-pill draft">Active Pending Sum</span>
           </div>
         </div>
       </div>
@@ -218,73 +227,26 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
                   onClick={fetchPendingReceipts}
                   disabled={loading}
                   title="Refresh Queue"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                 >
-                  {loading ? 'Refreshing...' : '🔄 Refresh'}
+                  <IconRefresh size={13} className={loading ? 'spin' : ''} />
+                  <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
                 </button>
                 <button
                   type="button"
                   className="btn btn-outline btn-sm"
                   onClick={() => setFocusMode(true)}
                   title="Collapse Queue for Wide Inspector"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                 >
-                  ◀ Hide
+                  <IconChevronLeft size={13} />
+                  <span>Hide</span>
                 </button>
               </div>
             </div>
 
-            {/* Quick Filter Tabs */}
+            {/* Quick Filter Tabs for Pending Submitted Approvals Queue */}
             <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)', background: '#f8fafc', overflowX: 'auto' }}>
-              <button
-                type="button"
-                style={{
-                  padding: '10px 14px',
-                  border: 'none',
-                  background: 'none',
-                  fontSize: '0.8125rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  borderBottom: filterStatus === 'PENDING' ? '2px solid var(--gold-primary)' : '2px solid transparent',
-                  color: filterStatus === 'PENDING' ? 'var(--gold-hover)' : 'var(--text-secondary)',
-                }}
-                onClick={() => { setFilterStatus('PENDING'); setCurrentPage(1); }}
-              >
-                ⏳ Pending ({pendingClaims.length})
-              </button>
-              <button
-                type="button"
-                style={{
-                  padding: '10px 14px',
-                  border: 'none',
-                  background: 'none',
-                  fontSize: '0.8125rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  borderBottom: filterStatus === 'APPROVED' ? '2px solid var(--gold-primary)' : '2px solid transparent',
-                  color: filterStatus === 'APPROVED' ? 'var(--gold-hover)' : 'var(--text-secondary)',
-                }}
-                onClick={() => { setFilterStatus('APPROVED'); setCurrentPage(1); }}
-              >
-                ✅ Approved ({approvedClaims.length})
-              </button>
-              <button
-                type="button"
-                style={{
-                  padding: '10px 14px',
-                  border: 'none',
-                  background: 'none',
-                  fontSize: '0.8125rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  borderBottom: filterStatus === 'CORRECTION' ? '2px solid var(--gold-primary)' : '2px solid transparent',
-                  color: filterStatus === 'CORRECTION' ? 'var(--gold-hover)' : 'var(--text-secondary)',
-                }}
-                onClick={() => { setFilterStatus('CORRECTION'); setCurrentPage(1); }}
-              >
-                ↺ Returned ({correctionClaims.length})
-              </button>
               <button
                 type="button"
                 style={{
@@ -297,10 +259,53 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
                   whiteSpace: 'nowrap',
                   borderBottom: filterStatus === 'ALL' ? '2px solid var(--gold-primary)' : '2px solid transparent',
                   color: filterStatus === 'ALL' ? 'var(--gold-hover)' : 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
                 }}
                 onClick={() => { setFilterStatus('ALL'); setCurrentPage(1); }}
               >
-                All ({totalClaims})
+                <IconClock size={13} /> All Pending ({totalClaims})
+              </button>
+              <button
+                type="button"
+                style={{
+                  padding: '10px 14px',
+                  border: 'none',
+                  background: 'none',
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  borderBottom: filterStatus === 'POLICY_PASS' ? '2px solid var(--gold-primary)' : '2px solid transparent',
+                  color: filterStatus === 'POLICY_PASS' ? 'var(--gold-hover)' : 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                }}
+                onClick={() => { setFilterStatus('POLICY_PASS'); setCurrentPage(1); }}
+              >
+                <IconCheckCircle size={13} /> Policy Passed ({policyPassedClaims.length})
+              </button>
+              <button
+                type="button"
+                style={{
+                  padding: '10px 14px',
+                  border: 'none',
+                  background: 'none',
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  borderBottom: filterStatus === 'POLICY_FLAG' ? '2px solid var(--gold-primary)' : '2px solid transparent',
+                  color: filterStatus === 'POLICY_FLAG' ? 'var(--gold-hover)' : 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                }}
+                onClick={() => { setFilterStatus('POLICY_FLAG'); setCurrentPage(1); }}
+              >
+                <IconShield size={13} /> Flagged ({policyFlaggedClaims.length})
               </button>
             </div>
 
@@ -323,7 +328,7 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
             <div style={{ maxHeight: '560px', overflowY: 'auto' }}>
               {paginatedReceipts.length === 0 ? (
                 <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📂</div>
+                  <div style={{ marginBottom: '8px' }}><IconFolder size={32} /></div>
                   No expense receipts found matching criteria.
                 </div>
               ) : (
@@ -360,8 +365,16 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
                             </span>
                           </div>
 
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                            👤 <strong>{r.employeeName || 'Employee'}</strong> &bull; {r.employeeEmail}
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <IconUser size={12} />
+                              <strong>{r.employeeName || 'Employee'}</strong> &bull; {r.employeeEmail}
+                            </span>
+                            {currentUser?.id && (r.uploaded_by === currentUser.id || r.uploadedBy === currentUser.id) && (
+                              <span style={{ fontSize: '0.65rem', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#fef3c7', color: '#92400e', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                <IconLock size={10} /> Your Claim (No Self-Review)
+                              </span>
+                            )}
                           </div>
 
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px', fontSize: '0.75rem' }}>
@@ -459,20 +472,20 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
                   <button
                     type="button"
                     className="btn btn-outline btn-sm"
-                    style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                    style={{ padding: '2px 8px', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                     disabled={safePage <= 1}
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   >
-                    ◀ Prev
+                    <IconChevronLeft size={11} /> Prev
                   </button>
                   <button
                     type="button"
                     className="btn btn-outline btn-sm"
-                    style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                    style={{ padding: '2px 8px', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                     disabled={safePage >= totalPages}
                     onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   >
-                    Next ▶
+                    Next <IconChevronRight size={11} />
                   </button>
                 </div>
               </div>
@@ -489,11 +502,12 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
                 className="btn btn-outline btn-sm"
                 id="btn-show-manager-queue"
                 onClick={() => setFocusMode(false)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               >
-                📋 Show Approvals Queue ({totalFiltered} claims)
+                <IconClipboard size={14} /> Show Approvals Queue ({totalFiltered} claims)
               </button>
-              <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                🔍 Wide Inspector Mode Active
+              <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <IconSearch size={14} /> Wide Inspector Mode Active
               </span>
             </div>
           )}
@@ -520,7 +534,7 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
                       onClick={() => setFocusMode(false)}
                       style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}
                     >
-                      ◀ Show Approvals Queue
+                      <IconChevronLeft size={14} /> Show Approvals Queue
                     </button>
                   ) : (
                     <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
@@ -536,7 +550,11 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
                   style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
                   title={focusMode ? "Restore Side-by-Side Queue List" : "Expand to Fullscreen View"}
                 >
-                  {focusMode ? '◫ Show Queue (Split)' : '⛶ Full Focus Mode'}
+                  {focusMode ? (
+                    <><IconSplit size={14} /> Show Queue (Split)</>
+                  ) : (
+                    <><IconMaximize size={14} /> Full Focus Mode</>
+                  )}
                 </button>
               </div>
 
@@ -549,7 +567,7 @@ export default function ManagerApprovalsView({ authToken, currentUser, onSelectR
             </div>
           ) : (
             <div className="table-card" style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-              <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>🛡️</div>
+              <div style={{ marginBottom: '12px' }}><IconShield size={36} color="var(--gold-hover)" /></div>
               <h3 style={{ fontSize: '1.1rem', color: 'var(--text-primary)', marginBottom: '6px' }}>
                 Manager Decision Workspace
               </h3>
