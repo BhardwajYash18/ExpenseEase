@@ -698,41 +698,33 @@ Development follows an incremental checkpoint process. Each checkpoint must be c
 | **CP-0** | Repository & Project Foundation (React PWA, Node/Express, FastAPI, PostgreSQL, Docker Compose, health endpoints) | ✅ Complete |
 | **CP-1** | Database + Multi-Tenancy (schema, RLS, migrations, tenant isolation, unprivileged app role) | ✅ Complete |
 | **CP-2** | Authentication + RBAC (bcrypt, JWT HS256, authenticate/requireRole middleware, login/me endpoints) | ✅ Complete |
-| **CP-3** | Receipt Capture + OCR (file upload, camera capture, file validation, image preprocessing, Tesseract OCR) | 🔲 Pending |
-| **CP-4** | AI Receipt Understanding (structured extraction, categorization, confidence, similarity) | 🔲 Pending |
-| **CP-5** | Policy + Duplicate Validation (deterministic policies, configurable limits, duplicate/similarity detection) | 🔲 Pending |
-| **CP-6** | Approval Workflow (SUBMITTED → PROCESSING → VALIDATION → PENDING_APPROVAL → APPROVED/REJECTED/CORRECTION_REQUESTED → FINANCE) | 🔲 Pending |
-| **CP-7** | Finance Batches (batch creation, approved-expense grouping, finance review, audit) | 🔲 Pending |
-| **CP-8** | Journal Entries (account mapping, journal entry generation, balance validation, finalization) | 🔲 Pending |
-| **CP-9** | CSV + Accounting Integration (CSV export, QuickBooks/Xero integration points) | 🔲 Pending |
-| **CP-10** | Security + Testing Audit (comprehensive security review, vulnerability testing, regression) | 🔲 Pending |
-| **CP-11** | Final End-to-End Audit (full workflow verification, gap analysis, final report) | 🔲 Pending |
+| **CP-3** | Receipt Capture + OCR (file upload, camera capture, file validation, image preprocessing, Tesseract OCR) | ✅ Complete |
+| **CP-4** | AI Receipt Understanding (structured extraction, categorization, confidence, similarity) | ✅ Complete |
+| **CP-5** | Policy + Duplicate Validation (deterministic policies, configurable limits, duplicate/similarity detection) | ✅ Complete |
+| **CP-6** | Approval Workflow (SUBMITTED → PROCESSING → VALIDATION → PENDING_APPROVAL → APPROVED/REJECTED/CORRECTION_REQUESTED → FINANCE) | ✅ Complete |
+| **CP-7** | Finance Batches (batch creation, approved-expense grouping, finance review, audit) | ✅ Complete |
+| **CP-8** | Journal Entries (account mapping, journal entry generation, balance validation, finalization) | ✅ Complete |
+| **CP-9** | CSV + Accounting Integration (CSV export, QuickBooks/Xero integration points) | ✅ Complete |
+| **CP-10** | Security + Testing Audit (comprehensive security review, vulnerability testing, regression) | ✅ Complete |
+| **CP-11** | Final End-to-End Audit (full workflow verification, gap analysis, final report) | ✅ Complete |
 
 ---
 
 ## 20. Current Implementation Status
 
-As of the latest verified checkpoint (Checkpoint 2), the following is implemented and tested:
+As of Checkpoint 11 (Final End-to-End Audit), the complete application workflow is implemented and verified:
 
 ### Implemented & Verified
 
-- **Four-service architecture**: React PWA, Node.js + Express backend, Python + FastAPI AI service, PostgreSQL — all running via Docker Compose.
-- **Deterministic migration system**: `database/migrator.js` with `schema_migrations` catalog.
-- **Multi-tenant schema**: `tenants` and `users` tables with UUIDv4 PKs, foreign keys, and constraints.
-- **PostgreSQL RLS**: Forced on tenant-scoped tables, with `tenant_isolation_policy` using transaction-local session variables.
-- **Unprivileged application role**: `expensease_app` (`NOSUPERUSER NOBYPASSRLS`) for realistic RLS enforcement.
-- **Connection pool safety**: `withTenantContext(tenantId, callback)` with `SET LOCAL ROLE` and `set_config` for zero-leakage.
-- **Authentication**: bcrypt password hashing (saltRounds=12), JWT (HS256 pinned, fail-fast secret), `POST /api/auth/login`, `GET /api/auth/me`.
-- **RBAC middleware**: `authenticate.js` (JWT-only identity), `requireRole.js` (EMPLOYEE, MANAGER, FINANCE).
-- **Automated tests**: 42 tests across 5 suites (auth, multiTenancy, health, readiness, database).
-
-### Pending (Checkpoints 3–11)
-
-- Receipt capture, upload, and OCR processing
-- AI-assisted extraction, categorization, and duplicate detection
-- Deterministic policy validation engine
-- Manager approval workflow with state transitions
-- Finance Batch creation, review, and management
-- Journal entry generation, balance validation, and finalization
-- CSV export and accounting system integration points
-- Comprehensive security and end-to-end audits
+- **Four-service architecture**: React PWA, Node.js + Express backend, Python + FastAPI AI service, PostgreSQL — all orchestrated via Docker Compose.
+- **Deterministic migration system**: `database/migrator.js` with `schema_migrations` catalog (migrations 001 through 010).
+- **Multi-tenant schema & RLS**: Forced Row-Level Security on all tenant-scoped tables with transaction-local session context (`withTenantContext`) and unprivileged `expensease_app` role.
+- **Authentication & RBAC**: bcrypt password hashing (`saltRounds=12`), pinned HS256 JWT tokens, server-enforced role authorization (`EMPLOYEE`, `MANAGER`, `FINANCE`).
+- **Receipt Capture & OCR**: Camera WebRTC capture and file upload, magic-byte format validation ($\le 10$ MB), OpenCV preprocessing, and Tesseract OCR text extraction.
+- **AI Structured Understanding**: Pydantic schema validation, structured field extraction (`merchant`, `date`, `amount`, `category`, `items`), dual-field provenance preserving AI suggestions alongside human confirmations, prompt-injection defense.
+- **Deterministic Policy & Duplicate Validation**: Deterministic rule engine for amount limits and category restrictions; multi-signal similarity engine scoring potential duplicates for human review.
+- **Manager Approval Workflow**: Strict state machine (`DRAFT` → `PENDING_APPROVAL` → `APPROVED` / `REJECTED` / `CORRECTION_REQUESTED`), pessimistic row locking (`SELECT FOR UPDATE`), separation of duties, and immutable audit logging.
+- **Finance Batches**: Atomic grouping of approved expenses, review locking (`OPEN` → `REVIEWED`), integer-cent arithmetic, and duplicate-inclusion prevention.
+- **Double-Entry Journal Entries**: Deterministic category-to-GL account mappings, balanced journal entry generation, invariant verification ($\sum \text{Debits} = \sum \text{Credits}$), and immutable finalization (`FINALIZED`).
+- **Accounting Exports & Integrations**: RFC 4180 CSV export with formula injection defense; provider-compliant schemas for QuickBooks Online `JournalEntry` and Xero `ManualJournals`; immutable export audit trail.
+- **Testing Coverage**: Automated test suites spanning unit, security, and end-to-end integration across backend (`backend/tests/`) and document processing (`ai-service/tests/`), along with clean frontend production compilation.
