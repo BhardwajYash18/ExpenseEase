@@ -406,21 +406,11 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded, autoStart
       ) : !previewUrl ? (
         /* Drop Zone */
         <div
+          className={`receipt-dropzone ${dragOver ? 'drag-active' : ''}`}
+          id="receipt-dropzone"
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          style={{
-            border: `2px dashed ${dragOver ? 'var(--gold-primary)' : 'var(--border-default)'}`,
-            borderRadius: 'var(--radius-lg)',
-            padding: '36px 20px',
-            textAlign: 'center',
-            backgroundColor: dragOver ? 'var(--gold-bg-subtle)' : '#fafafa',
-            transition: 'all 0.2s ease',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '12px',
-          }}
         >
           <div
             style={{
@@ -432,6 +422,7 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded, autoStart
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              transition: 'all 0.25s var(--ease-smooth)',
             }}
           >
             <IconCamera size={26} />

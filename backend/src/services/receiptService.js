@@ -322,8 +322,8 @@ async function listReceipts(tenantId, options = {}) {
     // Filter by role, ownership, and upload history visibility:
     // 1. The receipt upload history of ANY user (employee or manager) must be visible ONLY to themselves.
     //    When scope=personal, scope=my, or role=EMPLOYEE, filter strictly by r.uploaded_by = userId.
-    // 2. The ONLY history visible to a manager regarding other users is the list of pending submitted approvals:
-    //    w.current_state = 'PENDING_APPROVAL'.
+    // 2. For MANAGER: submitted claims are visible across review states (PENDING_APPROVAL, APPROVED, REJECTED, etc.).
+    //    Unsubmitted drafts by other users are strictly excluded.
     // 3. For FINANCE: only submitted/approved receipts are visible for batching & GL accounting.
     const isPersonalScope = options.scope === 'personal' || options.scope === 'my' || options.role === 'EMPLOYEE';
 
@@ -331,8 +331,8 @@ async function listReceipts(tenantId, options = {}) {
       params.push(options.userId);
       conditions.push(`r.uploaded_by = $${params.length}`);
     } else if (options.role === 'MANAGER') {
-      // The only history visible to manager regarding other users is the list of pending submitted approvals
-      conditions.push(`w.current_state = 'PENDING_APPROVAL'`);
+      // Submissions by other users that are drafts are strictly excluded
+      conditions.push(`(w.current_state IS NOT NULL AND w.current_state != 'DRAFT')`);
     } else {
       // For FINANCE or tenant batches pool: drafts are excluded
       conditions.push(`(w.current_state IS NOT NULL AND w.current_state != 'DRAFT')`);
@@ -346,7 +346,17 @@ async function listReceipts(tenantId, options = {}) {
           conditions.push(`r.uploaded_by = $${params.length}`);
         }
         conditions.push(`(w.current_state = 'DRAFT' OR w.current_state IS NULL)`);
-      } else if (!conditions.includes(`w.current_state = 'PENDING_APPROVAL'`)) {
+      } else if (options.status === 'PENDING' || options.status === 'PENDING_APPROVAL') {
+        conditions.push(`w.current_state = 'PENDING_APPROVAL'`);
+      } else if (options.status === 'APPROVED') {
+        conditions.push(`w.current_state = 'APPROVED'`);
+      } else if (options.status === 'REJECTED') {
+        conditions.push(`w.current_state = 'REJECTED'`);
+      } else if (options.status === 'CORRECTION_REQUESTED') {
+        conditions.push(`w.current_state = 'CORRECTION_REQUESTED'`);
+      } else if (options.status === 'HISTORY') {
+        conditions.push(`w.current_state IN ('APPROVED', 'REJECTED')`);
+      } else if (options.status !== 'ALL') {
         params.push(options.status);
         conditions.push(`w.current_state = $${params.length}`);
       }

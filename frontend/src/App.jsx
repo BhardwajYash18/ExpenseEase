@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ReceiptCapture from './components/ReceiptCapture';
 import ReceiptView from './components/ReceiptView';
 import ManagerApprovalsView from './components/ManagerApprovalsView';
+import ManagerDirectoryView from './components/ManagerDirectoryView';
 import FinanceBatchView from './components/FinanceBatchView';
 import JournalEntryView from './components/JournalEntryView';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -21,6 +22,7 @@ import {
   IconFileText,
   IconClock,
   IconCheckCircle,
+  IconXCircle,
   IconUpload,
   IconClipboard,
   IconScale,
@@ -29,6 +31,7 @@ import {
   IconEye,
   IconChevronLeft,
   IconChevronRight,
+  IconUsers,
 } from './components/Icons';
 
 function App() {
@@ -54,30 +57,43 @@ function App() {
   const [autoStartCamera, setAutoStartCamera] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem('expenseease_sidebar_collapsed') === 'true';
-    } catch (_) {
-      return false;
-    }
-  });
+  // Automatic sidebar auto-hiding:
+  // Starts collapsed/hidden for all users by default, automatically unhides/expands on hover,
+  // and auto-hides when mouse leaves or when a navigation item is clicked.
+  const [sidebarHovered, setSidebarHovered] = useState(false);
+  const sidebarLeaveTimeoutRef = useRef(null);
+  const sidebarCollapsed = !sidebarHovered;
 
-  // Keyboard shortcut (Ctrl+B) to toggle sidebar expansion
+  const handleSidebarMouseEnter = () => {
+    if (sidebarLeaveTimeoutRef.current) {
+      clearTimeout(sidebarLeaveTimeoutRef.current);
+      sidebarLeaveTimeoutRef.current = null;
+    }
+    setSidebarHovered(true);
+  };
+
+  const handleSidebarMouseLeave = () => {
+    sidebarLeaveTimeoutRef.current = setTimeout(() => {
+      setSidebarHovered(false);
+    }, 140);
+  };
+
+  const handleNavSelect = (navId) => {
+    if (sidebarLeaveTimeoutRef.current) {
+      clearTimeout(sidebarLeaveTimeoutRef.current);
+      sidebarLeaveTimeoutRef.current = null;
+    }
+    setActiveNav(navId);
+    setMobileMenuOpen(false);
+    setSidebarHovered(false);
+  };
+
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'B')) {
-        e.preventDefault();
-        setSidebarCollapsed((prev) => {
-          const next = !prev;
-          try {
-            localStorage.setItem('expenseease_sidebar_collapsed', String(next));
-          } catch (_) {}
-          return next;
-        });
+    return () => {
+      if (sidebarLeaveTimeoutRef.current) {
+        clearTimeout(sidebarLeaveTimeoutRef.current);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
 
@@ -225,6 +241,7 @@ function App() {
   const totalSubmittedCount = receiptsList.length;
   const pendingCount = receiptsList.filter((r) => (r.workflow_state || r.workflowState) === 'PENDING_APPROVAL').length;
   const approvedCount = receiptsList.filter((r) => (r.workflow_state || r.workflowState) === 'APPROVED').length;
+  const rejectedCount = receiptsList.filter((r) => (r.workflow_state || r.workflowState) === 'REJECTED').length;
 
   // Ledger table pagination state
   const [ledgerPage, setLedgerPage] = useState(1);
@@ -234,7 +251,7 @@ function App() {
   useEffect(() => {
     if (!currentUser) return;
     if (currentUser.role === 'EMPLOYEE') {
-      if (activeNav === 'approvals' || activeNav === 'finance') {
+      if (activeNav === 'approvals' || activeNav === 'finance' || activeNav === 'managers') {
         setActiveNav('dashboard');
       }
     } else if (currentUser.role === 'MANAGER') {
@@ -242,17 +259,23 @@ function App() {
         setActiveNav('dashboard');
       }
     } else if (currentUser.role === 'FINANCE') {
-      if (activeNav === 'upload' || activeNav === 'approvals') {
+      if (activeNav === 'upload' || activeNav === 'approvals' || activeNav === 'managers') {
         setActiveNav('finance');
       }
     }
   }, [currentUser?.role, activeNav]);
 
   // Active ledger dataset based on role and tab:
-  // Managers toggle between submitted tenant claims pool and their personal upload history.
+  // Managers toggle between pending claims, approved history, rejected history, and personal upload history.
   // Employees always view their personal upload history.
-  const activeLedgerReceipts = (currentUser?.role === 'MANAGER' && managerLedgerTab === 'PERSONAL')
-    ? personalReceiptsList
+  const activeLedgerReceipts = (currentUser?.role === 'MANAGER')
+    ? (managerLedgerTab === 'PERSONAL'
+        ? personalReceiptsList
+        : managerLedgerTab === 'APPROVED'
+        ? receiptsList.filter((r) => (r.workflow_state || r.workflowState) === 'APPROVED')
+        : managerLedgerTab === 'REJECTED'
+        ? receiptsList.filter((r) => (r.workflow_state || r.workflowState) === 'REJECTED')
+        : receiptsList.filter((r) => (r.workflow_state || r.workflowState) === 'PENDING_APPROVAL'))
     : (currentUser?.role === 'EMPLOYEE' ? (personalReceiptsList.length > 0 ? personalReceiptsList : receiptsList) : receiptsList);
 
   const filteredReceipts = Array.isArray(activeLedgerReceipts) ? activeLedgerReceipts : [];
@@ -274,9 +297,22 @@ function App() {
         <div className="sidebar-backdrop" onClick={() => setMobileMenuOpen(false)}></div>
       )}
 
-      {/* Dark Sidebar (Stitch Design Spec) */}
-      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${mobileMenuOpen ? 'open' : ''}`}>
-        <div className="sidebar-header" style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : 'space-between', padding: sidebarCollapsed ? '0 10px' : '0 16px', gap: '8px' }}>
+      {/* Dark Sidebar (Auto-hiding on desktop, offscreen drawer on mobile) */}
+      <aside
+        className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${mobileMenuOpen ? 'open' : ''}`}
+        onMouseEnter={handleSidebarMouseEnter}
+        onMouseLeave={handleSidebarMouseLeave}
+      >
+        <div
+          className="sidebar-header"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+            padding: sidebarCollapsed ? '0 10px' : '0 18px',
+            gap: '12px',
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, overflow: 'hidden' }}>
             <div className="brand-badge" title="ExpenseEase">E</div>
             {!sidebarCollapsed && (
@@ -286,21 +322,6 @@ function App() {
               </div>
             )}
           </div>
-          <button
-            type="button"
-            className="sidebar-collapse-toggle"
-            onClick={() => {
-              const next = !sidebarCollapsed;
-              setSidebarCollapsed(next);
-              try {
-                localStorage.setItem('expenseease_sidebar_collapsed', String(next));
-              } catch (_) {}
-            }}
-            title={sidebarCollapsed ? "Expand Sidebar (Ctrl+B)" : "Collapse Sidebar (Ctrl+B)"}
-            aria-label={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-          >
-            {sidebarCollapsed ? <IconChevronRight size={14} /> : <IconChevronLeft size={14} />}
-          </button>
         </div>
 
         <nav className="sidebar-nav">
@@ -314,10 +335,7 @@ function App() {
                       type="button"
                       className={`nav-item-btn ${activeNav === 'dashboard' ? 'active' : ''}`}
                       title="Dashboard"
-                      onClick={() => {
-                        setActiveNav('dashboard');
-                        setMobileMenuOpen(false);
-                      }}
+                      onClick={() => handleNavSelect('dashboard')}
                     >
                       <span className="nav-item-icon"><IconDashboard size={18} /></span>
                       {!sidebarCollapsed && <span>Dashboard</span>}
@@ -332,10 +350,7 @@ function App() {
                           type="button"
                           className={`nav-item-btn ${activeNav === 'upload' ? 'active' : ''}`}
                           title="Submit Expense"
-                          onClick={() => {
-                            setActiveNav('upload');
-                            setMobileMenuOpen(false);
-                          }}
+                          onClick={() => handleNavSelect('upload')}
                         >
                           <span className="nav-item-icon"><IconCamera size={18} /></span>
                           {!sidebarCollapsed && <span>Submit Expense</span>}
@@ -346,10 +361,7 @@ function App() {
                           type="button"
                           className={`nav-item-btn ${activeNav === 'receipt-detail' ? 'active' : ''}`}
                           title="Receipt OCR & Inspect"
-                          onClick={() => {
-                            setActiveNav('receipt-detail');
-                            setMobileMenuOpen(false);
-                          }}
+                          onClick={() => handleNavSelect('receipt-detail')}
                         >
                           <span className="nav-item-icon"><IconReceipt size={18} /></span>
                           {!sidebarCollapsed && <span>Receipt OCR &amp; Inspect</span>}
@@ -366,10 +378,7 @@ function App() {
                           type="button"
                           className={`nav-item-btn ${activeNav === 'upload' ? 'active' : ''}`}
                           title="Submit Expense"
-                          onClick={() => {
-                            setActiveNav('upload');
-                            setMobileMenuOpen(false);
-                          }}
+                          onClick={() => handleNavSelect('upload')}
                         >
                           <span className="nav-item-icon"><IconCamera size={18} /></span>
                           {!sidebarCollapsed && <span>Submit Expense</span>}
@@ -380,10 +389,7 @@ function App() {
                           type="button"
                           className={`nav-item-btn ${activeNav === 'receipt-detail' ? 'active' : ''}`}
                           title="Receipt OCR & Inspect"
-                          onClick={() => {
-                            setActiveNav('receipt-detail');
-                            setMobileMenuOpen(false);
-                          }}
+                          onClick={() => handleNavSelect('receipt-detail')}
                         >
                           <span className="nav-item-icon"><IconReceipt size={18} /></span>
                           {!sidebarCollapsed && <span>Receipt OCR &amp; Inspect</span>}
@@ -394,14 +400,23 @@ function App() {
                           type="button"
                           className={`nav-item-btn ${activeNav === 'approvals' ? 'active' : ''}`}
                           title="Manager Approvals"
-                          onClick={() => {
-                            setActiveNav('approvals');
-                            setMobileMenuOpen(false);
-                          }}
+                          onClick={() => handleNavSelect('approvals')}
                         >
                           <span className="nav-item-icon"><IconShield size={18} /></span>
                           {!sidebarCollapsed && <span>Manager Approvals</span>}
                           {pendingCount > 0 && <span className="nav-item-badge">{pendingCount}</span>}
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          className={`nav-item-btn ${activeNav === 'managers' ? 'active' : ''}`}
+                          title="Team Managers"
+                          onClick={() => handleNavSelect('managers')}
+                          id="nav-manager-directory"
+                        >
+                          <span className="nav-item-icon"><IconUsers size={18} /></span>
+                          {!sidebarCollapsed && <span>Managers</span>}
                         </button>
                       </li>
                     </>
@@ -414,10 +429,7 @@ function App() {
                         type="button"
                         className={`nav-item-btn ${activeNav === 'finance' ? 'active' : ''}`}
                         title="Finance Operations"
-                        onClick={() => {
-                          setActiveNav('finance');
-                          setMobileMenuOpen(false);
-                        }}
+                        onClick={() => handleNavSelect('finance')}
                       >
                         <span className="nav-item-icon"><IconBuilding size={18} /></span>
                         {!sidebarCollapsed && <span>Finance Operations</span>}
@@ -764,13 +776,26 @@ function App() {
                         <div className="action-card" onClick={() => setActiveNav('approvals')}>
                           <div className="action-card-icon"><IconClipboard size={22} /></div>
                           <div>
-                            <h4 className="action-card-title">Policy &amp; Audit Review</h4>
+                            <h4 className="action-card-title">Policy &amp; Claims History</h4>
                             <p className="action-card-desc">
-                              Inspect deterministic policy checks, duplicate similarity scores, and review workflow audit trails.
+                              Inspect audit history for approved ({approvedCount}) and rejected ({rejectedCount}) claims with policy results.
                             </p>
                           </div>
                           <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 'auto' }}>
-                            Inspect Compliance
+                            Inspect History &rarr;
+                          </button>
+                        </div>
+
+                        <div className="action-card" onClick={() => setActiveNav('managers')} id="action-card-managers">
+                          <div className="action-card-icon"><IconUsers size={22} /></div>
+                          <div>
+                            <h4 className="action-card-title">Team Managers &amp; Access</h4>
+                            <p className="action-card-desc">
+                              View other added managers in your company tenant, search directory, and provision new managers.
+                            </p>
+                          </div>
+                          <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 'auto' }}>
+                            Manage Managers &rarr;
                           </button>
                         </div>
                       </>
@@ -809,9 +834,9 @@ function App() {
 
                   {/* Recent Submissions Ledger Table */}
                   <div className="table-card">
-                    {/* For Managers: Tab Switcher between Pending Submitted Approvals and Personal Upload History */}
+                    {/* For Managers: Tab Switcher between Pending Approvals, Approved Claims, Rejected Claims, and Personal Upload History */}
                     {currentUser.role === 'MANAGER' && (
-                      <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-subtle)', padding: '0 16px', background: '#f8fafc' }}>
+                      <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-subtle)', padding: '0 16px', background: '#f8fafc', overflowX: 'auto' }}>
                         <button
                           type="button"
                           className="btn btn-sm"
@@ -827,10 +852,56 @@ function App() {
                             display: 'flex',
                             alignItems: 'center',
                             gap: '6px',
+                            whiteSpace: 'nowrap',
                           }}
                           onClick={() => { setManagerLedgerTab('PENDING_APPROVALS'); setLedgerPage(1); }}
+                          id="btn-ledger-tab-pending"
                         >
-                          <IconClock size={15} /> Pending Approvals ({receiptsList.length})
+                          <IconClock size={15} /> Pending Approvals ({pendingCount})
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          style={{
+                            border: 'none',
+                            borderRadius: 0,
+                            padding: '10px 14px',
+                            fontWeight: 600,
+                            background: 'none',
+                            borderBottom: managerLedgerTab === 'APPROVED' ? '2px solid #10b981' : '2px solid transparent',
+                            color: managerLedgerTab === 'APPROVED' ? '#047857' : 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            whiteSpace: 'nowrap',
+                          }}
+                          onClick={() => { setManagerLedgerTab('APPROVED'); setLedgerPage(1); }}
+                          id="btn-ledger-tab-approved"
+                        >
+                          <IconCheckCircle size={15} color={managerLedgerTab === 'APPROVED' ? '#10b981' : 'currentColor'} /> Approved Claims ({approvedCount})
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          style={{
+                            border: 'none',
+                            borderRadius: 0,
+                            padding: '10px 14px',
+                            fontWeight: 600,
+                            background: 'none',
+                            borderBottom: managerLedgerTab === 'REJECTED' ? '2px solid #ef4444' : '2px solid transparent',
+                            color: managerLedgerTab === 'REJECTED' ? '#b91c1c' : 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            whiteSpace: 'nowrap',
+                          }}
+                          onClick={() => { setManagerLedgerTab('REJECTED'); setLedgerPage(1); }}
+                          id="btn-ledger-tab-rejected"
+                        >
+                          <IconXCircle size={15} color={managerLedgerTab === 'REJECTED' ? '#ef4444' : 'currentColor'} /> Rejected Claims ({rejectedCount})
                         </button>
                         <button
                           type="button"
@@ -847,8 +918,10 @@ function App() {
                             display: 'flex',
                             alignItems: 'center',
                             gap: '6px',
+                            whiteSpace: 'nowrap',
                           }}
                           onClick={() => { setManagerLedgerTab('PERSONAL'); setLedgerPage(1); }}
+                          id="btn-ledger-tab-personal"
                         >
                           <IconUpload size={15} /> My Upload History ({personalReceiptsList.length})
                         </button>
@@ -860,13 +933,23 @@ function App() {
                         <span className="table-title">
                           {currentUser.role === 'EMPLOYEE'
                             ? 'My Upload History'
-                            : (managerLedgerTab === 'PERSONAL' ? 'My Upload History' : 'Pending Approvals Queue')}
+                            : (managerLedgerTab === 'PERSONAL'
+                                ? 'My Upload History'
+                                : managerLedgerTab === 'APPROVED'
+                                ? 'Approved Claims History'
+                                : managerLedgerTab === 'REJECTED'
+                                ? 'Rejected Claims History'
+                                : 'Pending Approvals Queue')}
                         </span>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                           {currentUser.role === 'EMPLOYEE'
                             ? 'Your personal expense vouchers and drafts'
                             : (managerLedgerTab === 'PERSONAL'
                                 ? 'Receipt vouchers & drafts uploaded by your unique login ID'
+                                : managerLedgerTab === 'APPROVED'
+                                ? 'Historical records of claims verified and approved for finance processing'
+                                : managerLedgerTab === 'REJECTED'
+                                ? 'Historical records of claims declined by managers with logged reasons'
                                 : 'Pending submitted expense claims awaiting manager sign-off')}
                         </div>
                       </div>
@@ -1143,6 +1226,14 @@ function App() {
                   authToken={authToken}
                   currentUser={currentUser}
                   onSelectReceipt={(r) => setLatestReceipt(r)}
+                />
+              )}
+
+              {/* VIEW: MANAGERS DIRECTORY (Manager Governance) */}
+              {activeNav === 'managers' && (
+                <ManagerDirectoryView
+                  authToken={authToken}
+                  currentUser={currentUser}
                 />
               )}
 
