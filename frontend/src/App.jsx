@@ -5,6 +5,9 @@ import ManagerApprovalsView from './components/ManagerApprovalsView';
 import ManagerDirectoryView from './components/ManagerDirectoryView';
 import FinanceBatchView from './components/FinanceBatchView';
 import JournalEntryView from './components/JournalEntryView';
+import FinanceReimbursementView from './components/FinanceReimbursementView';
+import ExternalImportView from './components/ExternalImportView';
+import DirectEntryView from './components/DirectEntryView';
 import ErrorBoundary from './components/ErrorBoundary';
 import { IS_DEMO_MODE, DEMO_ACCOUNTS } from './config/demoConfig';
 import {
@@ -54,6 +57,7 @@ function App() {
 
   // Active navigation view: 'dashboard' | 'upload' | 'receipt-detail' | 'approvals' | 'finance' | 'mappings' | 'integrations'
   const [activeNav, setActiveNav] = useState('dashboard');
+  const [financeSubTab, setFinanceSubTab] = useState('reimbursements'); // 'reimbursements' | 'batches' | 'journal' | 'external-import'
   const [autoStartCamera, setAutoStartCamera] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1239,18 +1243,97 @@ function App() {
 
               {/* VIEW 5: FINANCE OPERATIONS (Stitch Screen 4) */}
               {activeNav === 'finance' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <FinanceBatchView
-                    authToken={authToken}
-                    currentUser={currentUser}
-                  />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {/* Finance Operations Sub-navigation Bar */}
+                  <div
+                    className="table-card"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 14px',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <span style={{ fontSize: '0.8125rem', fontWeight: 700, marginRight: '8px', color: 'var(--text-secondary)' }}>
+                      Finance Workspace:
+                    </span>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${financeSubTab === 'reimbursements' ? 'btn-gold' : 'btn-outline'}`}
+                      onClick={() => setFinanceSubTab('reimbursements')}
+                      id="btn-finance-tab-reimbursements"
+                    >
+                      Reimbursements &amp; Org Ledger
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${financeSubTab === 'batches' ? 'btn-gold' : 'btn-outline'}`}
+                      onClick={() => setFinanceSubTab('batches')}
+                      id="btn-finance-tab-batches"
+                    >
+                      Finance Batches
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${financeSubTab === 'journal' ? 'btn-gold' : 'btn-outline'}`}
+                      onClick={() => setFinanceSubTab('journal')}
+                      id="btn-finance-tab-journal"
+                    >
+                      Journal Entries &amp; GL
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${financeSubTab === 'direct-entry' ? 'btn-gold' : 'btn-outline'}`}
+                      onClick={() => setFinanceSubTab('direct-entry')}
+                      id="btn-finance-tab-direct-entry"
+                    >
+                      Direct Entry
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${financeSubTab === 'external-import' ? 'btn-gold' : 'btn-outline'}`}
+                      onClick={() => setFinanceSubTab('external-import')}
+                      id="btn-finance-tab-external-import"
+                    >
+                      External Import
+                    </button>
+                  </div>
 
-                  <div style={{ marginTop: '12px' }}>
+                  {financeSubTab === 'reimbursements' && (
+                    <FinanceReimbursementView
+                      authToken={authToken}
+                      currentUser={currentUser}
+                    />
+                  )}
+
+                  {financeSubTab === 'batches' && (
+                    <FinanceBatchView
+                      authToken={authToken}
+                      currentUser={currentUser}
+                    />
+                  )}
+
+                  {financeSubTab === 'journal' && (
                     <JournalEntryView
                       authToken={authToken}
                       currentUser={currentUser}
                     />
-                  </div>
+                  )}
+
+                  {financeSubTab === 'direct-entry' && (
+                    <DirectEntryView
+                      authToken={authToken}
+                      currentUser={currentUser}
+                    />
+                  )}
+
+                  {financeSubTab === 'external-import' && (
+                    <ExternalImportView
+                      authToken={authToken}
+                      currentUser={currentUser}
+                    />
+                  )}
                 </div>
               )}
             </ErrorBoundary>

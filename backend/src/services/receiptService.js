@@ -33,7 +33,7 @@ const { validateReceiptFile, sanitizeFilename } = require('../utils/fileValidati
  * @param {object} file - Multer file object { buffer, mimetype, originalname, size }
  * @returns {Promise<object>} Safe receipt metadata (no filesystem paths)
  */
-async function uploadReceipt(user, file) {
+async function uploadReceipt(user, file, options = {}) {
   // 1. Validate the uploaded file
   const validation = validateReceiptFile(file);
   if (!validation.valid) {
@@ -41,6 +41,9 @@ async function uploadReceipt(user, file) {
     err.status = 400;
     throw err;
   }
+
+  const claimType = options.claimType === 'NON_REIMBURSABLE' ? 'NON_REIMBURSABLE' : 'REIMBURSEMENT';
+  const orgReference = options.orgReference ? String(options.orgReference).trim().slice(0, 100) : null;
 
   // 2. Generate server-controlled storage key
   const storageKey = storageService.generateStorageKey(user.tenantId, file.mimetype);
@@ -56,10 +59,11 @@ async function uploadReceipt(user, file) {
       const { rows } = await client.query(
         `INSERT INTO receipts (
           tenant_id, uploaded_by, original_filename, mime_type,
-          file_size_bytes, storage_key, upload_status, ocr_status
-        ) VALUES ($1, $2, $3, $4, $5, $6, 'COMPLETED', 'PENDING')
+          file_size_bytes, storage_key, upload_status, ocr_status,
+          claim_type, org_reference
+        ) VALUES ($1, $2, $3, $4, $5, $6, 'COMPLETED', 'PENDING', $7, $8)
         RETURNING id, tenant_id, uploaded_by, original_filename, mime_type,
-                  file_size_bytes, upload_status, ocr_status, created_at, updated_at`,
+                  file_size_bytes, upload_status, ocr_status, claim_type, org_reference, created_at, updated_at`,
         [
           user.tenantId,
           user.id,
@@ -67,9 +71,40 @@ async function uploadReceipt(user, file) {
           file.mimetype,
           file.size,
           storageKey,
+          claimType,
+          orgReference,
         ]
       );
-      return rows[0];
+
+      const r = rows[0];
+
+      // If non-reimbursable recordkeeping bill, immediately create documented workflow state
+      if (claimType === 'NON_REIMBURSABLE') {
+        const { rows: wfRows } = await client.query(
+          `INSERT INTO expense_workflows (
+            tenant_id, receipt_id, submitted_by, current_state, claim_type, org_reference, submitted_at
+          ) VALUES ($1, $2, $3, 'DOCUMENTED', 'NON_REIMBURSABLE', $4, CURRENT_TIMESTAMP)
+          RETURNING id`,
+          [user.tenantId, r.id, user.id, orgReference]
+        );
+
+        if (wfRows[0]) {
+          await client.query(
+            `INSERT INTO expense_workflow_actions (
+              workflow_id, receipt_id, tenant_id, actor_id, action, previous_state, new_state, reason
+            ) VALUES ($1, $2, $3, $4, 'DOCUMENT', 'DRAFT', 'DOCUMENTED', $5)`,
+            [
+              wfRows[0].id,
+              r.id,
+              user.tenantId,
+              user.id,
+              orgReference ? `Documented non-reimbursable purchase (Ref: ${orgReference})` : 'Documented non-reimbursable purchase for recordkeeping',
+            ]
+          );
+        }
+      }
+
+      return r;
     });
   } catch (dbErr) {
     // Clean up stored file if database insert fails
@@ -100,6 +135,8 @@ async function uploadReceipt(user, file) {
     originalFilename: receipt.original_filename,
     mimeType: receipt.mime_type,
     fileSizeBytes: receipt.file_size_bytes,
+    claimType: receipt.claim_type,
+    orgReference: receipt.org_reference,
     ocrRawText: ocrResult.raw_text || null,
     ocrEngine: ocrResult.ocr_engine || null,
     createdAt: receipt.created_at,
@@ -202,6 +239,7 @@ async function getReceiptById(tenantId, receiptId, userFilter = null) {
     let query = `
       SELECT id, uploaded_by, original_filename, mime_type,
              file_size_bytes, upload_status, ocr_status,
+             claim_type, org_reference,
              ocr_raw_text, ocr_engine, ocr_error_message,
              ocr_processed_at, created_at, updated_at
       FROM receipts WHERE id = $1
@@ -223,6 +261,8 @@ async function getReceiptById(tenantId, receiptId, userFilter = null) {
       originalFilename: r.original_filename,
       mimeType: r.mime_type,
       fileSizeBytes: r.file_size_bytes,
+      claimType: r.claim_type,
+      orgReference: r.org_reference,
       uploadStatus: r.upload_status,
       ocrStatus: r.ocr_status,
       ocrRawText: r.ocr_raw_text,
@@ -286,6 +326,7 @@ async function listReceipts(tenantId, options = {}) {
     let query = `
       SELECT r.id, r.uploaded_by, r.original_filename, r.mime_type,
              r.file_size_bytes, r.upload_status, r.ocr_status,
+             r.claim_type, r.org_reference,
              r.created_at, r.updated_at,
              COALESCE(w.current_state, 'DRAFT') AS workflow_state,
              w.id AS workflow_id,
@@ -319,12 +360,6 @@ async function listReceipts(tenantId, options = {}) {
     const params = [];
     const conditions = [];
 
-    // Filter by role, ownership, and upload history visibility:
-    // 1. The receipt upload history of ANY user (employee or manager) must be visible ONLY to themselves.
-    //    When scope=personal, scope=my, or role=EMPLOYEE, filter strictly by r.uploaded_by = userId.
-    // 2. For MANAGER: submitted claims are visible across review states (PENDING_APPROVAL, APPROVED, REJECTED, etc.).
-    //    Unsubmitted drafts by other users are strictly excluded.
-    // 3. For FINANCE: only submitted/approved receipts are visible for batching & GL accounting.
     const isPersonalScope = options.scope === 'personal' || options.scope === 'my' || options.role === 'EMPLOYEE';
 
     if (isPersonalScope && options.userId) {
@@ -333,14 +368,22 @@ async function listReceipts(tenantId, options = {}) {
     } else if (options.role === 'MANAGER') {
       // Submissions by other users that are drafts are strictly excluded
       conditions.push(`(w.current_state IS NOT NULL AND w.current_state != 'DRAFT')`);
+      // If manager is checking reimbursement approval queue, exclude non-reimbursable records
+      if (options.status === 'PENDING' || options.status === 'PENDING_APPROVAL') {
+        conditions.push(`(r.claim_type = 'REIMBURSEMENT' OR r.claim_type IS NULL)`);
+      }
     } else {
       // For FINANCE or tenant batches pool: drafts are excluded
       conditions.push(`(w.current_state IS NOT NULL AND w.current_state != 'DRAFT')`);
     }
 
+    if (options.claimType && options.claimType !== 'ALL') {
+      params.push(options.claimType);
+      conditions.push(`(r.claim_type = $${params.length} OR w.claim_type = $${params.length})`);
+    }
+
     if (options.status) {
       if (options.status === 'DRAFT') {
-        // Drafts can only be viewed in the upload history of the unique user ID who uploaded it
         if (!isPersonalScope && options.userId) {
           params.push(options.userId);
           conditions.push(`r.uploaded_by = $${params.length}`);
@@ -354,6 +397,8 @@ async function listReceipts(tenantId, options = {}) {
         conditions.push(`w.current_state = 'REJECTED'`);
       } else if (options.status === 'CORRECTION_REQUESTED') {
         conditions.push(`w.current_state = 'CORRECTION_REQUESTED'`);
+      } else if (options.status === 'DOCUMENTED') {
+        conditions.push(`w.current_state = 'DOCUMENTED'`);
       } else if (options.status === 'HISTORY') {
         conditions.push(`w.current_state IN ('APPROVED', 'REJECTED')`);
       } else if (options.status !== 'ALL') {
@@ -397,6 +442,8 @@ async function listReceipts(tenantId, options = {}) {
         fileSizeBytes: r.file_size_bytes,
         uploadStatus: r.upload_status,
         ocrStatus: r.ocr_status,
+        claimType: r.claim_type || 'REIMBURSEMENT',
+        orgReference: r.org_reference || null,
         workflowState: r.workflow_state,
         workflow_state: r.workflow_state,
         workflowId: r.workflow_id,

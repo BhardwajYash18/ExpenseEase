@@ -32,6 +32,13 @@ function FinanceBatchView({ authToken, currentUser, onSelectBatch }) {
   const [batchJournalEntry, setBatchJournalEntry] = useState(null);
   const [generatingJournal, setGeneratingJournal] = useState(false);
 
+  // Missing Account Mapping configuration modal state (Feature A)
+  const [missingMappingCategory, setMissingMappingCategory] = useState(null);
+  const [showMappingModal, setShowMappingModal] = useState(false);
+  const [mappingDebitAccount, setMappingDebitAccount] = useState('6900 - Miscellaneous / Other Expense');
+  const [mappingCreditAccount, setMappingCreditAccount] = useState('2000 - Accounts Payable');
+  const [savingMapping, setSavingMapping] = useState(false);
+
   // Pagination states
   const [batchPage, setBatchPage] = useState(1);
   const [batchPageSize, setBatchPageSize] = useState(5);
@@ -268,10 +275,56 @@ function FinanceBatchView({ authToken, currentUser, onSelectBatch }) {
 
       setSuccessMsg(`Journal Entry generated successfully! (Status: ${data.journalEntry.status})`);
       setBatchJournalEntry(data.journalEntry);
+      setMissingMappingCategory(null);
+    } catch (err) {
+      setError(err.message);
+      const match = err.message.match(/Missing account mapping for category: '([^']+)'/);
+      if (match && match[1]) {
+        setMissingMappingCategory(match[1]);
+        if (match[1].toLowerCase() === 'other') {
+          setMappingDebitAccount('6900 - Miscellaneous / Other Expense');
+        } else {
+          setMappingDebitAccount('6900 - General Expense');
+        }
+      }
+    } finally {
+      setGeneratingJournal(false);
+    }
+  }
+
+  // Handle saving configured mapping and retrying journal generation
+  async function handleSaveAccountMapping(e) {
+    e.preventDefault();
+    if (!missingMappingCategory) return;
+    setSavingMapping(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/account-mappings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          category: missingMappingCategory,
+          debitAccount: mappingDebitAccount,
+          creditAccount: mappingCreditAccount,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error?.message || 'Failed to save account mapping');
+      }
+      setSuccessMsg(`Account mapping for '${missingMappingCategory}' configured successfully!`);
+      setShowMappingModal(false);
+      // Re-trigger journal entry generation
+      setTimeout(() => {
+        handleGenerateJournalEntry();
+      }, 200);
     } catch (err) {
       setError(err.message);
     } finally {
-      setGeneratingJournal(false);
+      setSavingMapping(false);
     }
   }
 
@@ -730,15 +783,28 @@ function FinanceBatchView({ authToken, currentUser, onSelectBatch }) {
               </div>
 
               {!batchJournalEntry && (
-                <button
-                  type="button"
-                  className="btn btn-gold"
-                  onClick={handleGenerateJournalEntry}
-                  disabled={generatingJournal}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                >
-                  {generatingJournal ? 'Generating...' : <><IconZap size={14} /> Generate Balanced Journal Entry</>}
-                </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-gold"
+                    onClick={handleGenerateJournalEntry}
+                    disabled={generatingJournal}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    {generatingJournal ? 'Generating...' : <><IconZap size={14} /> Generate Balanced Journal Entry</>}
+                  </button>
+
+                  {missingMappingCategory && (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => setShowMappingModal(true)}
+                      style={{ fontSize: '0.75rem', color: '#92400e', borderColor: '#fde68a', background: '#fffbeb' }}
+                    >
+                      ⚙️ Configure Account Mapping for "{missingMappingCategory}"
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -832,6 +898,58 @@ function FinanceBatchView({ authToken, currentUser, onSelectBatch }) {
                     {reviewing ? 'Completing...' : 'Confirm Review'}
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Quick Account Mapping Configuration Modal (Feature A) */}
+          {showMappingModal && (
+            <div className="modal-backdrop" onClick={() => !savingMapping && setShowMappingModal(false)}>
+              <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+                <div className="modal-header">
+                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>Configure Account Mapping</h3>
+                  <button type="button" className="btn-close" onClick={() => setShowMappingModal(false)} disabled={savingMapping}>
+                    <IconX size={16} />
+                  </button>
+                </div>
+                <form onSubmit={handleSaveAccountMapping} style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div>
+                    <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>Expense Category</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={missingMappingCategory}
+                      disabled
+                      style={{ background: '#f1f5f9', fontWeight: 600 }}
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>Debit Account (Expense Ledger) *</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={mappingDebitAccount}
+                      onChange={(e) => setMappingDebitAccount(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>Credit Account (Liability / Payable) *</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={mappingCreditAccount}
+                      onChange={(e) => setMappingCreditAccount(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
+                    <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowMappingModal(false)} disabled={savingMapping}>Cancel</button>
+                    <button type="submit" className="btn btn-gold btn-sm" disabled={savingMapping}>
+                      {savingMapping ? 'Saving...' : 'Save & Generate Journal Entry'}
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           )}

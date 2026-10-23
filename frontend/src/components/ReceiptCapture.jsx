@@ -24,6 +24,10 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded, autoStart
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [cameraLoading, setCameraLoading] = useState(false);
 
+  // Non-Reimbursable Recordkeeping State (Feature C)
+  const [isNonReimbursable, setIsNonReimbursable] = useState(false);
+  const [orgReference, setOrgReference] = useState('');
+
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const videoRef = useRef(null);
@@ -249,6 +253,14 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded, autoStart
 
     const formData = new FormData();
     formData.append('receipt', selectedFile);
+    if (isNonReimbursable) {
+      formData.append('claimType', 'NON_REIMBURSABLE');
+      if (orgReference.trim()) {
+        formData.append('orgReference', orgReference.trim());
+      }
+    } else {
+      formData.append('claimType', 'REIMBURSEMENT');
+    }
 
     try {
       const response = await fetch('/api/receipts/upload', {
@@ -315,6 +327,67 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded, autoStart
         style={{ display: 'none' }}
         onChange={handleFileSelection}
       />
+
+      {/* Record Purpose Selector (Feature C) */}
+      <div
+        style={{
+          marginBottom: '16px',
+          padding: '14px 16px',
+          background: isNonReimbursable ? '#f0fdf4' : '#f8fafc',
+          borderRadius: 'var(--radius-md)',
+          border: isNonReimbursable ? '1px solid #86efac' : '1px solid var(--border-subtle)',
+          boxShadow: 'var(--shadow-xs)',
+          transition: 'all 0.2s ease',
+        }}
+      >
+        <div style={{ fontWeight: 700, fontSize: '0.8125rem', color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          Document Purpose
+        </div>
+        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
+            <input
+              type="radio"
+              name="claimTypeToggle"
+              checked={!isNonReimbursable}
+              onChange={() => setIsNonReimbursable(false)}
+            />
+            Submit Expense for Reimbursement
+          </label>
+
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem', color: isNonReimbursable ? '#166534' : 'inherit' }}>
+            <input
+              type="radio"
+              name="claimTypeToggle"
+              id="radio-non-reimbursable"
+              checked={isNonReimbursable}
+              onChange={() => setIsNonReimbursable(true)}
+            />
+            Upload Bill for Recordkeeping — No Reimbursement Required
+          </label>
+        </div>
+
+        {isNonReimbursable && (
+          <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #bbf7d0', display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ flex: '1', minWidth: '220px' }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', display: 'block', marginBottom: '4px' }}>
+                Organizational Reference (Optional):
+              </label>
+              <input
+                type="text"
+                className="form-input"
+                id="input-org-reference"
+                placeholder="e.g. PO-9941, Project Atlas, Team Offsite"
+                value={orgReference}
+                onChange={(e) => setOrgReference(e.target.value)}
+                style={{ padding: '6px 10px', fontSize: '0.8125rem', background: '#ffffff' }}
+              />
+            </div>
+            <div style={{ flex: '2', minWidth: '220px', fontSize: '0.75rem', color: '#15803d' }}>
+              ℹ️ <strong>Recordkeeping Only:</strong> This bill will be stored for documentation and accounting visibility. It will NOT enter your manager's approval queue or employee payout totals.
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Live Camera Viewfinder Overlay */}
       {isCameraActive ? (
@@ -489,7 +562,9 @@ export default function ReceiptCapture({ authToken, onReceiptUploaded, autoStart
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             >
               {uploading ? (
-                <><IconClock size={16} className="spin" /> Processing OCR & Preprocessing...</>
+                <><IconClock size={16} className="spin" /> Processing OCR &amp; Preprocessing...</>
+              ) : isNonReimbursable ? (
+                <><IconCheckCircle size={16} /> Save Non-Reimbursable Bill</>
               ) : (
                 <><IconSend size={16} /> Submit Receipt for OCR</>
               )}

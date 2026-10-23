@@ -91,7 +91,7 @@ async function getEligibleApprovedExpenses(tenantId) {
       JOIN expense_workflows ew ON r.id = ew.receipt_id
       JOIN users u ON r.uploaded_by = u.id
       LEFT JOIN receipt_extractions re ON r.id = re.receipt_id
-      WHERE ew.current_state = 'APPROVED'
+      WHERE ew.current_state = 'APPROVED' AND (ew.claim_type = 'REIMBURSEMENT' OR ew.claim_type IS NULL)
       ORDER BY ew.completed_at DESC, r.created_at DESC
     `;
 
@@ -327,7 +327,7 @@ async function createBatch(tenantId, userId, userRole, { receiptIds }) {
     try {
       // 1. Lock and retrieve candidate receipts within tenant
       const receiptQuery = `
-        SELECT r.id, r.tenant_id, r.uploaded_by,
+        SELECT r.id, r.tenant_id, r.uploaded_by, r.claim_type,
                re.ai_total_amount, re.confirmed_total_amount,
                ew.current_state as workflow_state
         FROM receipts r
@@ -348,10 +348,10 @@ async function createBatch(tenantId, userId, userRole, { receiptIds }) {
         throw error;
       }
 
-      // Check eligibility: MUST be 'APPROVED' (PRD FR-09.2, AGENTS.md Sec 14)
-      const unapproved = candidateRows.filter((r) => r.workflow_state !== 'APPROVED');
-      if (unapproved.length > 0) {
-        const details = unapproved.map((r) => `${r.id} (state: ${r.workflow_state || 'UNSUBMITTED'})`).join(', ');
+      // Check eligibility: MUST be 'APPROVED' and 'REIMBURSEMENT' (PRD FR-09.2, AGENTS.md Sec 14)
+      const ineligible = candidateRows.filter((r) => r.workflow_state !== 'APPROVED' || r.claim_type === 'NON_REIMBURSABLE');
+      if (ineligible.length > 0) {
+        const details = ineligible.map((r) => `${r.id} (type: ${r.claim_type || 'REIMBURSEMENT'}, state: ${r.workflow_state || 'UNSUBMITTED'})`).join(', ');
         const error = new Error(`Validation failed: Only APPROVED expenses may enter a finance batch. Ineligible expenses: ${details}`);
         error.status = 400;
         throw error;
@@ -495,7 +495,7 @@ async function addExpenseToBatch(tenantId, userId, userRole, batchId, receiptId)
 
       // 2. Lock receipt and verify eligibility
       const receiptQuery = `
-        SELECT r.id, r.tenant_id,
+        SELECT r.id, r.tenant_id, r.claim_type,
                re.ai_total_amount, re.confirmed_total_amount,
                ew.current_state as workflow_state
         FROM receipts r
@@ -513,7 +513,7 @@ async function addExpenseToBatch(tenantId, userId, userRole, batchId, receiptId)
       }
 
       const r = receiptRows[0];
-      if (r.workflow_state !== 'APPROVED') {
+      if (r.workflow_state !== 'APPROVED' || r.claim_type === 'NON_REIMBURSABLE') {
         const error = new Error(`Validation failed: Only APPROVED expenses may enter a finance batch. Receipt is in '${r.workflow_state || 'UNSUBMITTED'}' state.`);
         error.status = 400;
         throw error;

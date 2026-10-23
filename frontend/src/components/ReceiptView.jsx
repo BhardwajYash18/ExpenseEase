@@ -759,6 +759,14 @@ export default function ReceiptView({
                   )}
                 </button>
               </>
+            ) : receipt.claimType === 'NON_REIMBURSABLE' ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '10px 16px', borderRadius: 'var(--radius-md)' }}>
+                <IconCheckCircle size={20} color="#10b981" />
+                <div>
+                  <div style={{ fontWeight: 700, color: '#6ee7b7', fontSize: '0.875rem' }}>Non-Reimbursable Record</div>
+                  <div style={{ fontSize: '0.75rem', color: '#a7f3d0' }}>Documented for recordkeeping{receipt.orgReference ? ` • Ref: ${receipt.orgReference}` : ''}</div>
+                </div>
+              </div>
             ) : currentState === 'PENDING_APPROVAL' ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '10px 16px', borderRadius: 'var(--radius-md)' }}>
                 <IconClock size={20} color="#93c5fd" />
@@ -789,7 +797,7 @@ export default function ReceiptView({
       )}
 
       {/* Top Manager Review & Decision Bar (Prominent, Uncompressed, Right at the Top) */}
-      {isManager && (
+      {isManager && receipt.claimType !== 'NON_REIMBURSABLE' && (
         <div
           className="table-card"
           id="manager-decision-bar"
@@ -1746,8 +1754,26 @@ export default function ReceiptView({
                 </div>
               )}
 
+              {/* Non-Reimbursable Record Notice (Feature C) */}
+              {receipt.claimType === 'NON_REIMBURSABLE' && (
+                <div style={{ padding: '14px 18px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 'var(--radius-md)', color: '#166534', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, fontSize: '0.95rem' }}>
+                    <IconCheckCircle size={18} color="#16a34a" />
+                    <span>Non-Reimbursable Purchase Record</span>
+                  </div>
+                  <div style={{ fontSize: '0.8125rem', color: '#15803d' }}>
+                    This bill was uploaded for organizational recordkeeping without reimbursement requested. It is excluded from employee reimbursement payouts and manager approval queues.
+                  </div>
+                  {receipt.orgReference && (
+                    <div style={{ marginTop: '4px', fontSize: '0.8125rem', fontWeight: 600, color: '#14532d' }}>
+                      Organizational Reference: <strong>{receipt.orgReference}</strong>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Submitter Actions (EMPLOYEE) */}
-              {isSubmitter && (currentState === 'DRAFT' || currentState === 'CORRECTION_REQUESTED') && (
+              {isSubmitter && receipt.claimType !== 'NON_REIMBURSABLE' && (currentState === 'DRAFT' || currentState === 'CORRECTION_REQUESTED') && (
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                   <button
                     type="button"

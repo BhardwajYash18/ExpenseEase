@@ -160,6 +160,12 @@ async function submitExpense(tenantId, receiptId, user) {
       workflow = lockedRows[0];
 
       // 3. Validate current state allows submission
+      if (workflow.claim_type === 'NON_REIMBURSABLE') {
+        const err = new Error('Cannot submit a non-reimbursable recordkeeping bill for reimbursement approval.');
+        err.status = 400;
+        throw err;
+      }
+
       if (
         workflow.current_state !== WORKFLOW_STATES.DRAFT &&
         workflow.current_state !== WORKFLOW_STATES.CORRECTION_REQUESTED
@@ -278,6 +284,12 @@ async function approveExpense(tenantId, receiptId, user, comment = null) {
 
       const workflow = lockedRows[0];
 
+      if (workflow.claim_type === 'NON_REIMBURSABLE') {
+        const err = new Error('Non-reimbursable documentation is not subject to manager approvals.');
+        err.status = 400;
+        throw err;
+      }
+
       // 3. Enforce separation of duties: Submitter cannot approve own expense claim
       if (workflow.submitted_by === user.id || workflow.uploaded_by === user.id) {
         const err = new Error('Forbidden: Separation of duties: Reviewer cannot approve their own expense submission.');
@@ -387,6 +399,12 @@ async function rejectExpense(tenantId, receiptId, user, reason) {
 
       const workflow = lockedRows[0];
 
+      if (workflow.claim_type === 'NON_REIMBURSABLE') {
+        const err = new Error('Non-reimbursable documentation is not subject to manager approvals.');
+        err.status = 400;
+        throw err;
+      }
+
       // Enforce separation of duties: Submitter cannot reject their own expense submission
       if (workflow.submitted_by === user.id || workflow.uploaded_by === user.id) {
         const err = new Error('Forbidden: Separation of duties: Reviewer cannot reject their own expense submission.');
@@ -495,6 +513,12 @@ async function requestCorrection(tenantId, receiptId, user, reason) {
       }
 
       const workflow = lockedRows[0];
+
+      if (workflow.claim_type === 'NON_REIMBURSABLE') {
+        const err = new Error('Non-reimbursable documentation is not subject to manager approvals.');
+        err.status = 400;
+        throw err;
+      }
 
       // Enforce separation of duties: Submitter cannot request correction on their own expense submission
       if (workflow.submitted_by === user.id || workflow.uploaded_by === user.id) {

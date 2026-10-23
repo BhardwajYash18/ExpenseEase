@@ -16,9 +16,12 @@ const DEFAULT_MAPPINGS = [
   { category: 'Meals', debitAccount: '6100 - Meals & Entertainment', creditAccount: '2000 - Accounts Payable' },
   { category: 'Travel', debitAccount: '6200 - Travel & Lodging', creditAccount: '2000 - Accounts Payable' },
   { category: 'Supplies', debitAccount: '6300 - Office Supplies', creditAccount: '2000 - Accounts Payable' },
+  { category: 'Office Supplies', debitAccount: '6300 - Office Supplies', creditAccount: '2000 - Accounts Payable' },
   { category: 'Software', debitAccount: '6400 - Software & Subscriptions', creditAccount: '2000 - Accounts Payable' },
   { category: 'Transportation', debitAccount: '6250 - Local Transportation', creditAccount: '2000 - Accounts Payable' },
   { category: 'Lodging', debitAccount: '6210 - Hotel & Accommodation', creditAccount: '2000 - Accounts Payable' },
+  { category: 'Accommodation', debitAccount: '6210 - Hotel & Accommodation', creditAccount: '2000 - Accounts Payable' },
+  { category: 'Other', debitAccount: '6900 - Miscellaneous / Other Expense', creditAccount: '2000 - Accounts Payable' },
   { category: 'Uncategorized', debitAccount: '6900 - General Expense', creditAccount: '2000 - Accounts Payable' },
 ];
 
@@ -133,19 +136,14 @@ async function createOrUpdateAccountMapping(tenantId, userId, { category, debitA
  */
 async function seedDefaultAccountMappings(tenantId) {
   return withTenantContext(tenantId, async (client) => {
-    const { rows: existing } = await client.query(
-      'SELECT count(*) as count FROM account_mappings'
-    );
-
-    if (parseInt(existing[0].count, 10) === 0) {
-      for (const def of DEFAULT_MAPPINGS) {
-        await client.query(
-          `INSERT INTO account_mappings (tenant_id, category, debit_account, credit_account)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (tenant_id, category) DO NOTHING`,
-          [tenantId, def.category, def.debitAccount, def.creditAccount]
-        );
-      }
+    // Idempotently seed any missing default category mappings
+    for (const def of DEFAULT_MAPPINGS) {
+      await client.query(
+        `INSERT INTO account_mappings (tenant_id, category, debit_account, credit_account)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (tenant_id, category) DO NOTHING`,
+        [tenantId, def.category, def.debitAccount, def.creditAccount]
+      );
     }
 
     const { rows } = await client.query(

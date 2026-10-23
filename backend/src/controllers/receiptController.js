@@ -21,7 +21,10 @@ async function upload(req, res, next) {
       });
     }
 
-    const result = await receiptService.uploadReceipt(req.user, req.file);
+    const claimType = req.body && req.body.claimType === 'NON_REIMBURSABLE' ? 'NON_REIMBURSABLE' : 'REIMBURSEMENT';
+    const orgReference = req.body && req.body.orgReference ? String(req.body.orgReference).trim() : null;
+
+    const result = await receiptService.uploadReceipt(req.user, req.file, { claimType, orgReference });
 
     return res.status(201).json({ receipt: result });
   } catch (err) {
@@ -41,7 +44,7 @@ async function upload(req, res, next) {
  */
 async function list(req, res, next) {
   try {
-    const { limit, offset, page, pageSize, status, scope } = req.query;
+    const { limit, offset, page, pageSize, status, scope, claimType } = req.query;
     const result = await receiptService.listReceipts(req.user.tenantId, {
       limit,
       offset,
@@ -49,6 +52,7 @@ async function list(req, res, next) {
       pageSize,
       status,
       scope,
+      claimType,
       userId: req.user.id,
       role: req.user.role,
     });
