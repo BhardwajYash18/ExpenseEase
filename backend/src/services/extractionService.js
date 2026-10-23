@@ -525,6 +525,129 @@ async function updateExtraction(tenantId, receiptId, user, confirmedData) {
     }
 
     const extractionId = updatedRows[0].id;
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    // 5. Explicit line-item deletion (safe semantics, never delete by omission)
+    if (Array.isArray(confirmedData.deletedLineItemIds) && confirmedData.deletedLineItemIds.length > 0) {
+      for (const delId of confirmedData.deletedLineItemIds) {
+        if (!delId || typeof delId !== 'string' || !UUID_REGEX.test(delId)) {
+          const err = new Error('Invalid line item ID format in deletedLineItemIds');
+          err.status = 400;
+          throw err;
+        }
+      }
+
+      const { rows: verifiedDelRows } = await client.query(
+        'SELECT id FROM receipt_line_items WHERE receipt_extraction_id = $1 AND id = ANY($2::uuid[])',
+        [extractionId, confirmedData.deletedLineItemIds]
+      );
+
+      if (verifiedDelRows.length !== confirmedData.deletedLineItemIds.length) {
+        const err = new Error('One or more line items to delete do not exist or do not belong to this receipt');
+        err.status = 400;
+        throw err;
+      }
+
+      await client.query(
+        'DELETE FROM receipt_line_items WHERE receipt_extraction_id = $1 AND id = ANY($2::uuid[])',
+        [extractionId, confirmedData.deletedLineItemIds]
+      );
+    }
+
+    // 6. Line item product name and quantity updates and manual insertions
+    if (Array.isArray(confirmedData.lineItems)) {
+      const updateItems = confirmedData.lineItems.filter((li) => li && li.id);
+      const newItems = confirmedData.lineItems.filter((li) => li && !li.id);
+
+      // Validate and verify ownership of existing line items before applying updates
+      if (updateItems.length > 0) {
+        const updateIds = updateItems.map((li) => {
+          if (!li.id || typeof li.id !== 'string' || !UUID_REGEX.test(li.id)) {
+            const err = new Error('Invalid line item ID format');
+            err.status = 400;
+            throw err;
+          }
+          return li.id;
+        });
+
+        const { rows: verifiedUpdateRows } = await client.query(
+          'SELECT id FROM receipt_line_items WHERE receipt_extraction_id = $1 AND id = ANY($2::uuid[])',
+          [extractionId, updateIds]
+        );
+
+        if (verifiedUpdateRows.length !== updateIds.length) {
+          const err = new Error('One or more line items to update do not exist or do not belong to this receipt');
+          err.status = 400;
+          throw err;
+        }
+
+        for (const item of updateItems) {
+          const desc = item.description !== undefined && item.description !== null ? String(item.description).trim() : '';
+          if (!desc) {
+            const err = new Error('Product/item description cannot be empty');
+            err.status = 400;
+            throw err;
+          }
+          if (desc.length > 512) {
+            const err = new Error('Product/item description cannot exceed 512 characters');
+            err.status = 400;
+            throw err;
+          }
+
+          let qty = item.quantity !== undefined && item.quantity !== null && item.quantity !== '' ? Number(item.quantity) : 1.0;
+          if (isNaN(qty) || qty <= 0) {
+            const err = new Error('Quantity must be a valid positive number');
+            err.status = 400;
+            throw err;
+          }
+
+          // Update both description and quantity; unit prices and totals remain read-only
+          await client.query(
+            'UPDATE receipt_line_items SET description = $1, quantity = $2 WHERE id = $3 AND receipt_extraction_id = $4',
+            [desc, qty, item.id, extractionId]
+          );
+        }
+      }
+
+      // Insert new manual product entries with editable product name and quantity, and schema defaults for prices
+      if (newItems.length > 0) {
+        const { rows: maxLineRows } = await client.query(
+          'SELECT COALESCE(MAX(line_number), 0) AS max_line FROM receipt_line_items WHERE receipt_extraction_id = $1',
+          [extractionId]
+        );
+        let currentLineNumber = Number(maxLineRows[0].max_line);
+
+        for (const item of newItems) {
+          const desc = item && item.description !== undefined && item.description !== null ? String(item.description).trim() : '';
+          if (!desc) {
+            const err = new Error('Product/item description cannot be empty');
+            err.status = 400;
+            throw err;
+          }
+          if (desc.length > 512) {
+            const err = new Error('Product/item description cannot exceed 512 characters');
+            err.status = 400;
+            throw err;
+          }
+
+          let qty = item && item.quantity !== undefined && item.quantity !== null && item.quantity !== '' ? Number(item.quantity) : 1.0;
+          if (isNaN(qty) || qty <= 0) {
+            const err = new Error('Quantity must be a valid positive number');
+            err.status = 400;
+            throw err;
+          }
+
+          currentLineNumber += 1;
+          await client.query(
+            `INSERT INTO receipt_line_items (
+              receipt_extraction_id, tenant_id, line_number, description, quantity, unit_price, total_price
+            ) VALUES ($1, $2, $3, $4, $5, NULL, NULL)`,
+            [extractionId, tenantId, currentLineNumber, desc, qty]
+          );
+        }
+      }
+    }
+
     const { rows: lineItemRows } = await client.query(
       'SELECT * FROM receipt_line_items WHERE receipt_extraction_id = $1 ORDER BY line_number ASC',
       [extractionId]

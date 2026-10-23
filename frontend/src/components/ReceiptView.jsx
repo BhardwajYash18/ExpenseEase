@@ -184,7 +184,9 @@ export default function ReceiptView({
               const triggerData = await triggerRes.json();
               if (triggerRes.ok && isMounted && triggerData.extraction) {
                 setExtraction(triggerData.extraction);
-                initEditForm(triggerData.extraction);
+                if (!isEditing) {
+                  initEditForm(triggerData.extraction);
+                }
               }
             } catch (_) {}
           }
@@ -196,7 +198,9 @@ export default function ReceiptView({
         }
         if (isMounted) {
           setExtraction(data.extraction);
-          initEditForm(data.extraction);
+          if (!isEditing) {
+            initEditForm(data.extraction);
+          }
         }
       } catch (err) {
         if (isMounted) setExtractError(err.message);
@@ -269,6 +273,16 @@ export default function ReceiptView({
       : (eff.requestedAmount !== null && eff.requestedAmount !== undefined ? eff.requestedAmount : total);
     const desc = conf.reimbursementDescription || eff.reimbursementDescription || '';
 
+    const rawItems = Array.isArray(ext?.lineItems) ? ext.lineItems : [];
+    const lineItems = rawItems.map((li) => ({
+      id: li.id || null,
+      lineNumber: li.lineNumber,
+      description: li.description || '',
+      quantity: li.quantity != null ? Number(li.quantity) : 1,
+      unitPrice: li.unitPrice != null ? Number(li.unitPrice) : null,
+      totalPrice: li.totalPrice != null ? Number(li.totalPrice) : null,
+    }));
+
     setEditForm({
       merchantName: eff.merchantName || '',
       receiptDate: eff.receiptDate ? eff.receiptDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
@@ -280,6 +294,8 @@ export default function ReceiptView({
       currency: eff.currency || 'INR',
       receiptNumber: eff.receiptNumber || '',
       category: eff.category || 'Other',
+      lineItems,
+      deletedLineItemIds: [],
     });
   }
 
@@ -339,16 +355,29 @@ export default function ReceiptView({
     }
   }
 
-  // Save Confirmed Values (manual edits, requested amount, business description)
-  async function handleSaveConfirmed(e) {
-    e.preventDefault();
+  // Save Confirmed Values (manual edits, requested amount, business description, and line items)
+  async function handleSaveConfirmed(e = null) {
+    if (e && e.preventDefault) e.preventDefault();
     setSaveLoading(true);
     setExtractError(null);
     setSaveSuccess(false);
 
     try {
-      const totalNum = editForm.totalAmount !== '' ? Number(editForm.totalAmount) : null;
-      const reqNum = editForm.requestedAmount !== '' ? Number(editForm.requestedAmount) : totalNum;
+      // Validate line items: product name must not be empty and quantity must be positive number
+      const items = editForm.lineItems || [];
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (!item.description || !String(item.description).trim()) {
+          throw new Error(`Product / item name on row ${i + 1} cannot be empty.`);
+        }
+        const qtyNum = Number(item.quantity);
+        if (isNaN(qtyNum) || qtyNum <= 0) {
+          throw new Error(`Quantity on row ${i + 1} must be a valid positive number.`);
+        }
+      }
+
+      const totalNum = editForm.totalAmount !== '' && editForm.totalAmount !== null ? Number(editForm.totalAmount) : null;
+      const reqNum = editForm.requestedAmount !== '' && editForm.requestedAmount !== null ? Number(editForm.requestedAmount) : totalNum;
 
       const payload = {
         merchantName: editForm.merchantName || null,
@@ -357,11 +386,19 @@ export default function ReceiptView({
         requestedAmount: reqNum,
         description: editForm.description || null,
         reimbursementDescription: editForm.description || null,
-        subtotalAmount: editForm.subtotalAmount !== '' ? Number(editForm.subtotalAmount) : null,
-        taxAmount: editForm.taxAmount !== '' ? Number(editForm.taxAmount) : null,
+        subtotalAmount: editForm.subtotalAmount !== '' && editForm.subtotalAmount !== null ? Number(editForm.subtotalAmount) : null,
+        taxAmount: editForm.taxAmount !== '' && editForm.taxAmount !== null ? Number(editForm.taxAmount) : null,
         currency: editForm.currency || 'USD',
         receiptNumber: editForm.receiptNumber || null,
         category: editForm.category || 'Other',
+        lineItems: items.map((li) => ({
+          id: li.id || undefined,
+          description: String(li.description).trim(),
+          quantity: Number(li.quantity),
+          unitPrice: li.unitPrice != null ? Number(li.unitPrice) : null,
+          totalPrice: li.totalPrice != null ? Number(li.totalPrice) : null,
+        })),
+        deletedLineItemIds: editForm.deletedLineItemIds || [],
       };
 
       const res = await fetch(`/api/receipts/${receipt.id}/extraction`, {
@@ -383,8 +420,10 @@ export default function ReceiptView({
       setIsEditing(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
+      return true;
     } catch (err) {
       setExtractError(err.message);
+      return false;
     } finally {
       setSaveLoading(false);
     }
@@ -421,23 +460,13 @@ export default function ReceiptView({
     setActionLoading(true);
     setWorkflowError(null);
 
-    // If submitting and extraction is missing, trigger extraction first
-    if (actionType === 'SUBMIT' && !extraction) {
-      try {
-        const extRes = await fetch(`/api/receipts/${receipt.id}/extraction`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${authToken}`,
-            'Content-Type': 'application/json',
-          },
-        });
-        const extData = await extRes.json();
-        if (extRes.ok && extData.extraction) {
-          setExtraction(extData.extraction);
-          initEditForm(extData.extraction);
-        }
-      } catch (_) {
-        // Continue to submission attempt
+    // Save pending edits before submitting claim; abort submission if saving fails
+    if (actionType === 'SUBMIT' && isEditing) {
+      const saveSucceeded = await handleSaveConfirmed();
+      if (!saveSucceeded) {
+        setActionLoading(false);
+        setWorkflowError('Please correct any validation errors and ensure your changes are saved before submitting.');
+        return;
       }
     }
 
@@ -1468,6 +1497,124 @@ export default function ReceiptView({
                       Applicable GST or tax
                     </span>
                   </div>
+                </div>
+
+                <div style={{ background: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <div>
+                      <span className="form-label" style={{ fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <IconClipboard size={14} /> Receipt Products &amp; Quantities
+                      </span>
+                      <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>
+                        Review and edit OCR-extracted product names and quantities, or manually add missing purchased items.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => {
+                        setEditForm((prev) => ({
+                          ...prev,
+                          lineItems: [
+                            ...(prev.lineItems || []),
+                            { id: null, description: '', quantity: 1, unitPrice: null, totalPrice: null },
+                          ],
+                        }));
+                      }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem' }}
+                    >
+                      <IconPlus size={12} /> Add Product
+                    </button>
+                  </div>
+
+                  {(!editForm.lineItems || editForm.lineItems.length === 0) ? (
+                    <div style={{ padding: '12px', textAlign: 'center', background: '#fff', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border-subtle)', color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
+                      No product line items listed. Click <strong>"Add Product"</strong> above to manually enter missing purchased products.
+                    </div>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', fontSize: '0.8125rem', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                            <th style={{ textAlign: 'left', padding: '6px 8px' }}>Product / Item Name *</th>
+                            <th style={{ textAlign: 'center', padding: '6px 8px', width: '90px' }}>Qty *</th>
+                            <th style={{ textAlign: 'right', padding: '6px 8px', width: '90px' }}>Unit Price</th>
+                            <th style={{ textAlign: 'right', padding: '6px 8px', width: '90px' }}>Total</th>
+                            <th style={{ textAlign: 'center', padding: '6px 8px', width: '70px' }}>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {editForm.lineItems.map((li, idx) => (
+                            <tr key={li.id || `manual-${idx}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: '6px 8px' }}>
+                                <input
+                                  type="text"
+                                  className="form-input"
+                                  style={{ padding: '6px 10px', fontSize: '0.8125rem', width: '100%' }}
+                                  value={li.description || ''}
+                                  placeholder="e.g. Arabica Roast Beans or Taxi Fare"
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setEditForm((prev) => {
+                                      const updated = [...prev.lineItems];
+                                      updated[idx] = { ...updated[idx], description: val };
+                                      return { ...prev, lineItems: updated };
+                                    });
+                                  }}
+                                  required
+                                />
+                              </td>
+                              <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                                <input
+                                  type="number"
+                                  step="any"
+                                  min="0.001"
+                                  className="form-input"
+                                  style={{ padding: '6px 8px', fontSize: '0.8125rem', width: '75px', textAlign: 'center', display: 'inline-block' }}
+                                  value={li.quantity ?? ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setEditForm((prev) => {
+                                      const updated = [...prev.lineItems];
+                                      updated[idx] = { ...updated[idx], quantity: val };
+                                      return { ...prev, lineItems: updated };
+                                    });
+                                  }}
+                                  required
+                                />
+                              </td>
+                              <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--text-secondary)' }}>
+                                {li.unitPrice != null ? `${editForm.currency || 'USD'} ${Number(li.unitPrice).toFixed(2)}` : '—'}
+                              </td>
+                              <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                {li.totalPrice != null ? `${editForm.currency || 'USD'} ${Number(li.totalPrice).toFixed(2)}` : '—'}
+                              </td>
+                              <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  className="btn btn-outline btn-sm"
+                                  style={{ padding: '4px 8px', fontSize: '0.7rem', color: '#ef4444', borderColor: '#fca5a5' }}
+                                  onClick={() => {
+                                    setEditForm((prev) => {
+                                      const removedItem = prev.lineItems[idx];
+                                      const updatedList = prev.lineItems.filter((_, i) => i !== idx);
+                                      const updatedDeleted = removedItem.id
+                                        ? [...(prev.deletedLineItemIds || []), removedItem.id]
+                                        : (prev.deletedLineItemIds || []);
+                                      return { ...prev, lineItems: updatedList, deletedLineItemIds: updatedDeleted };
+                                    });
+                                  }}
+                                  title="Remove this line item"
+                                >
+                                  Remove
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
 
                 <div className="form-group">

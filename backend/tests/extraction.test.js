@@ -304,6 +304,163 @@ describe('Checkpoint 4 — AI Receipt Understanding & Structured Extraction', ()
       expect(res.status).toBe(400);
       expect(res.body.error.message).toMatch(/totalAmount must be a non-negative number/);
     });
+
+    it('should allow employee to edit both product name and quantity while preserving prices as read-only', async () => {
+      // Fetch current extraction to get line item IDs
+      const getRes = await request(app)
+        .get(`/api/receipts/${receiptAId}/extraction`)
+        .set('Authorization', `Bearer ${employeeAToken}`);
+
+      expect(getRes.status).toBe(200);
+      const items = getRes.body.extraction.lineItems;
+      expect(items.length).toBeGreaterThanOrEqual(1);
+
+      const targetItem = items[0];
+      const originalUnitPrice = targetItem.unitPrice;
+      const originalTotalPrice = targetItem.totalPrice;
+
+      // Update description and quantity
+      const updateRes = await request(app)
+        .put(`/api/receipts/${receiptAId}/extraction`)
+        .set('Authorization', `Bearer ${employeeAToken}`)
+        .send({
+          lineItems: [
+            {
+              id: targetItem.id,
+              description: 'Double Shot Oat Cappuccino',
+              quantity: 3,
+              // Attempting to pass altered prices should be ignored because prices remain read-only
+              unitPrice: 99.99,
+              totalPrice: 299.97,
+            },
+          ],
+        });
+
+      expect(updateRes.status).toBe(200);
+      const updatedItem = updateRes.body.extraction.lineItems.find((li) => li.id === targetItem.id);
+      expect(updatedItem).toBeDefined();
+      expect(updatedItem.description).toBe('Double Shot Oat Cappuccino');
+      expect(Number(updatedItem.quantity)).toBe(3);
+      // Prices MUST remain unmutated (read-only)
+      expect(updatedItem.unitPrice).toBe(originalUnitPrice);
+      expect(updatedItem.totalPrice).toBe(originalTotalPrice);
+    });
+
+    it('should reject empty or whitespace-only product name with 400', async () => {
+      const getRes = await request(app)
+        .get(`/api/receipts/${receiptAId}/extraction`)
+        .set('Authorization', `Bearer ${employeeAToken}`);
+
+      const targetItem = getRes.body.extraction.lineItems[0];
+
+      const res = await request(app)
+        .put(`/api/receipts/${receiptAId}/extraction`)
+        .set('Authorization', `Bearer ${employeeAToken}`)
+        .send({
+          lineItems: [
+            {
+              id: targetItem.id,
+              description: '   ',
+              quantity: 2,
+            },
+          ],
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.message).toMatch(/Product\/item description cannot be empty/);
+    });
+
+    it('should reject zero, negative, or invalid quantities with 400', async () => {
+      const getRes = await request(app)
+        .get(`/api/receipts/${receiptAId}/extraction`)
+        .set('Authorization', `Bearer ${employeeAToken}`);
+
+      const targetItem = getRes.body.extraction.lineItems[0];
+
+      // Test zero quantity
+      const resZero = await request(app)
+        .put(`/api/receipts/${receiptAId}/extraction`)
+        .set('Authorization', `Bearer ${employeeAToken}`)
+        .send({
+          lineItems: [
+            {
+              id: targetItem.id,
+              description: 'Valid Item Name',
+              quantity: 0,
+            },
+          ],
+        });
+      expect(resZero.status).toBe(400);
+      expect(resZero.body.error.message).toMatch(/Quantity must be a valid positive number/);
+
+      // Test negative quantity
+      const resNegative = await request(app)
+        .put(`/api/receipts/${receiptAId}/extraction`)
+        .set('Authorization', `Bearer ${employeeAToken}`)
+        .send({
+          lineItems: [
+            {
+              id: targetItem.id,
+              description: 'Valid Item Name',
+              quantity: -2.5,
+            },
+          ],
+        });
+      expect(resNegative.status).toBe(400);
+      expect(resNegative.body.error.message).toMatch(/Quantity must be a valid positive number/);
+
+      // Test non-numeric quantity
+      const resInvalid = await request(app)
+        .put(`/api/receipts/${receiptAId}/extraction`)
+        .set('Authorization', `Bearer ${employeeAToken}`)
+        .send({
+          lineItems: [
+            {
+              id: targetItem.id,
+              description: 'Valid Item Name',
+              quantity: 'invalid-qty',
+            },
+          ],
+        });
+      expect(resInvalid.status).toBe(400);
+      expect(resInvalid.body.error.message).toMatch(/Quantity must be a valid positive number/);
+    });
+
+    it('should allow adding new manual products with positive quantity and deleting line items explicitly', async () => {
+      // Add manual item
+      const addRes = await request(app)
+        .put(`/api/receipts/${receiptAId}/extraction`)
+        .set('Authorization', `Bearer ${employeeAToken}`)
+        .send({
+          lineItems: [
+            {
+              description: 'Manual Almond Croissant',
+              quantity: 2,
+            },
+          ],
+        });
+
+      expect(addRes.status).toBe(200);
+      const addedItem = addRes.body.extraction.lineItems.find(
+        (li) => li.description === 'Manual Almond Croissant'
+      );
+      expect(addedItem).toBeDefined();
+      expect(Number(addedItem.quantity)).toBe(2);
+      expect(addedItem.unitPrice).toBeNull();
+      expect(addedItem.totalPrice).toBeNull();
+
+      // Delete the added item explicitly using deletedLineItemIds
+      const deleteRes = await request(app)
+        .put(`/api/receipts/${receiptAId}/extraction`)
+        .set('Authorization', `Bearer ${employeeAToken}`)
+        .send({
+          deletedLineItemIds: [addedItem.id],
+        });
+
+      expect(deleteRes.status).toBe(200);
+      const remainingItems = deleteRes.body.extraction.lineItems;
+      expect(remainingItems.find((li) => li.id === addedItem.id)).toBeUndefined();
+    });
   });
 
   describe('4. RBAC & Multi-Tenant Authorization Rules', () => {
