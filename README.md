@@ -26,6 +26,7 @@ Artificial intelligence in ExpenseEase is strictly an assistive capability. AI m
 ### 2. OCR & AI-Assisted Understanding
 - **Automated Text Extraction**: Integrated Tesseract OCR extracts raw textual data from receipt images following noise reduction and adaptive preprocessing.
 - **Structured Field Understanding**: Extracts structured fields including merchant name, transaction date, total amount, currency, tax amount, and individual line items.
+- **Interactive Post-OCR Editing**: Employees can edit merchant names, product/item names, and quantities post-OCR, or manually add missing line items, with explicit deletion semantics.
 - **Semantic Category Suggestions**: Provides category recommendations based on extracted merchant and line-item semantics.
 - **Dual-Field Provenance**: Preserves original immutable AI suggestions alongside human-confirmed values, giving full visibility into any employee corrections.
 
@@ -41,20 +42,35 @@ Artificial intelligence in ExpenseEase is strictly an assistive capability. AI m
 - **Pessimistic Concurrency**: Row-level locking (`SELECT ... FOR UPDATE`) prevents race conditions during concurrent approval submissions.
 - **Immutable Audit Trail**: Append-only log recording actor, role, timestamp, action, and rationale for every transition.
 
-### 5. Finance Batches
-- **Approved Expense Grouping**: Finance teams aggregate approved expenses into structured batches for organizational reconciliation and audit.
-- **Atomic Operations**: Finance Batch creation is transactional and strictly restricted to approved, tenant-owned expenses.
-- **Integer-Cent Arithmetic**: Batch sums are calculated using integer cents, eliminating floating-point rounding discrepancies.
-- **Lifecycle & Review Locking**: Batches transition from `OPEN` to `REVIEWED`. Once reviewed, batches are locked against further expense additions or removals.
+### 5. Non-Reimbursable Bill Documentation
+- **Recordkeeping Without Reimbursement**: Employees and Managers can upload purchase bills for recordkeeping ("Upload Bill for Recordkeeping — No Reimbursement Required").
+- **Dedicated Workflow State**: Marked as `claim_type = 'NON_REIMBURSABLE'` with workflow status `DOCUMENTED` and audit action `DOCUMENT`, bypassing manager reimbursement approval queues.
+- **Reimbursement Queue Segregation**: Strictly excluded from employee reimbursement calculations, payment ledger, reimbursement emails, and Finance Batches.
+- **Organization Expense Ledger Discovery**: Discoverable and filterable by Finance with `DOCUMENTED` badge, OCR inspection, and document viewer.
 
-### 6. Deterministic Double-Entry Accounting
+### 6. Finance Batches & Reimbursement Automation
+- **Approved Expense Grouping**: Finance teams aggregate approved reimbursement expenses into structured batches for organizational reconciliation and audit.
+- **Integer-Cent Arithmetic**: Batch sums and reimbursements are calculated using integer cents, eliminating floating-point rounding discrepancies.
+- **Review Locking**: Batches transition from `OPEN` to `REVIEWED`. Once reviewed, batches are locked against further modifications.
+- **Payment Ledger**: Tracks payment statuses (supporting full and partial payments) in `reimbursement_payments`.
+- **Simulated Notification Emails**: Generates mock employee reimbursement notification emails with delivery simulation and logging in `reimbursement_email_logs`.
+
+### 7. Direct Financial Entries & External CSV Ingestion
+- **Direct Financial Entries**: Finance users can manually enter external invoices, bills, or payment documents directly into the General Ledger independently of employee claims or manager approvals.
+- **OCR Preview & Attachments**: Finance can attach document files and review OCR extraction previews before saving.
+- **Draft & GL Posting**: Supports saving as `DRAFT` and posting directly to the General Ledger (`source_type = 'DIRECT_ENTRY'`) with strict debit/credit balance validation.
+- **External CSV Imports**: Finance can ingest external financial transactions with format validation, pre-posting preview, and deduplication.
+
+### 8. Deterministic Double-Entry Accounting
 - **Category-to-GL Mapping**: Deterministic mapping rules translate expense categories into General Ledger (GL) debit and credit accounts.
-- **Balanced Journal Entries**: Automatically generates double-entry records from reviewed Finance Batches.
+- **Default 'Other' Mapping**: Category `Other` is mapped by default to `6900 - Miscellaneous / Other Expense` (Debit) and `2000 - Accounts Payable` (Credit).
+- **Safe Missing Mapping Handling**: Unmapped categories produce an explicit error and trigger an on-the-fly configuration dialog in the Finance UI.
+- **Balanced Journal Entries**: Automatically generates double-entry records from reviewed Finance Batches or Direct Financial Entries.
 - **Double-Entry Balance Invariant**: Enforces the fundamental accounting rule:
   $$\sum \text{Debits} = \sum \text{Credits}$$
 - **Finalization Safeguards**: Unbalanced entries are rejected. Once finalized by Finance (`FINALIZED`), journal entries become permanently immutable.
 
-### 7. Export & Integration Points
+### 9. Export & Integration Points
 - **RFC 4180 CSV Export**: Generates standardized accounting CSV exports with formula injection mitigation (sanitizing `=`, `+`, `-`, `@` characters).
 - **QuickBooks Online Integration Point**: Read-only provider adapter transforms finalized journal entries into QuickBooks Online `JournalEntry` entity schemas.
 - **Xero Integration Point**: Read-only provider adapter transforms finalized journal entries into Xero `ManualJournals` entity schemas.
@@ -157,9 +173,9 @@ ExpenseEase enforces strict server-side Role-Based Access Control (RBAC) across 
 
 | Role | Permitted Actions | Restrictions |
 |---|---|---|
-| **`EMPLOYEE`** | Upload receipt images; view own receipts; confirm/correct extracted receipt fields; submit expenses for approval; correct returned expenses. | Cannot view other users' receipts; cannot approve/reject expenses; cannot access finance batches, journal entries, or accounting exports. |
-| **`MANAGER`** | Review submitted expenses for tenant employees; view receipt images and extraction provenance; approve expenses; reject expenses with reasons; request corrections with reasons. | Cannot approve expenses they uploaded (separation of duties); cannot create finance batches or generate journal entries. |
-| **`FINANCE`** | Review approved expenses; create and review Finance Batches; configure GL account mappings; generate and finalize double-entry Journal Entries; export accounting CSVs; generate QuickBooks/Xero payloads. | Cannot approve expenses as a manager; must operate strictly within tenant boundaries. |
+| **`EMPLOYEE`** | Upload receipt images; document non-reimbursable bills (`NON_REIMBURSABLE`); view own receipts; confirm/correct extracted receipt fields; edit line item names and quantities post-OCR; submit expenses for approval; correct returned expenses. | Cannot view other users' receipts; cannot approve/reject expenses; cannot access finance batches, journal entries, or accounting exports. |
+| **`MANAGER`** | Review submitted expenses for tenant employees; view receipt images and extraction provenance; document non-reimbursable bills (`NON_REIMBURSABLE`); approve expenses; reject expenses with reasons; request corrections with reasons. | Cannot approve expenses they uploaded (separation of duties); cannot create finance batches or generate journal entries. |
+| **`FINANCE`** | View Organization Expense Ledger (with claim-type filters); review approved expenses; create and review Finance Batches; enter Direct Financial Entries; import external CSV transactions; configure GL account mappings (including dynamic unmapped category resolution); generate and finalize double-entry Journal Entries; track reimbursement payments; send employee notification emails; export accounting CSVs; generate QuickBooks/Xero payloads. | Cannot approve expenses as a manager; must operate strictly within tenant boundaries. |
 
 ---
 
@@ -438,16 +454,20 @@ ExpenseEase features comprehensive automated test coverage across all layers of 
 cd backend
 npm test
 ```
-The backend test suite covers:
+The backend test suite contains **22 test suites** with **356 automated tests** passing (100% pass rate), covering:
 - **Authentication**: JWT signing, HS256 pinning, token expiration, algorithm confusion prevention, tampered token rejection, and generic login failure responses.
 - **RBAC Authorization**: Permission boundaries across `EMPLOYEE`, `MANAGER`, and `FINANCE` roles, role spoofing defense, and separation of duties.
 - **Multi-Tenancy & RLS**: Database Row-Level Security, transaction-local tenant context isolation, connection pool context clearing, and cross-tenant access rejection.
 - **File Validation & Storage**: Magic-byte inspection, file size constraints, filename sanitization, and path traversal protection.
-- **AI Extraction & Effective Values**: Schema validation, immutable AI provenance, human confirmation overrides, and failure resilience.
+- **AI Extraction & Effective Values**: Schema validation, immutable AI provenance, human confirmation overrides, post-OCR product name and quantity editing, manual line item creation, and failure resilience.
+- **Non-Reimbursable Bill Documentation**: Employee/Manager upload without reimbursement, `DOCUMENTED` state, audit logging, and strict exclusion from reimbursement totals, batches, and emails.
 - **Policy Validation & Duplicate Detection**: Deterministic rule evaluation, category restrictions, receipt requirements, and advisory similarity scoring.
 - **Workflow State Machine**: State transition validation, pessimistic concurrency locking (`SELECT FOR UPDATE`), mandatory decision reasons, and immutable audit logs.
-- **Finance Batches**: Atomic batch creation, approved-only inclusion, duplicate prevention within batches, integer-cent arithmetic, and review locking.
-- **Journal Entries & Double-Entry Accounting**: Deterministic GL account mapping, balanced debit/credit validation, draft review, finalization locking, and immutability.
+- **Finance Batches**: Atomic batch creation, approved-only inclusion, non-reimbursable exclusion, duplicate prevention within batches, integer-cent arithmetic, and review locking.
+- **Direct Financial Entries**: Finance manual transaction entry, draft state persistence, GL posting, attachment storage, OCR preview, deduplication, and audit trail.
+- **Organization Expense Ledger & Reimbursements**: Multi-criteria filtering, reimbursement payment ledger tracking, and simulated employee notification emails.
+- **External Financial Imports**: CSV ingestion, validation, pre-posting preview, and deduplication.
+- **Journal Entries & Double-Entry Accounting**: Deterministic GL account mapping, default `Other` mapping (`6900` / `2000`), dynamic unmapped category configuration, balanced debit/credit validation, draft review, finalization locking, and immutability.
 - **CSV Export & Integrations**: Formula injection mitigation, finalized-only eligibility, read-only safety, QuickBooks Online adapter, and Xero adapter payload transformations.
 - **Security Hardening**: UUID route and payload validation, database error classification (22P02, 22001, 23505, 23503, 22021), 1MB request limits, and prompt-injection resilience.
 - **End-to-End Integration**: Full golden path verification from receipt capture through approval, batching, accounting finalization, export, and cross-tenant isolation.
@@ -532,6 +552,31 @@ All protected endpoints require an `Authorization: Bearer <token>` header carryi
 | `GET` | `/api/journal-entries/:id` | `FINANCE` | Retrieves journal entry with ordered debit/credit lines and audit trail. |
 | `POST` | `/api/journal-entries/:id/finalize`| `FINANCE` | Validates balance and finalizes entry (`FINALIZED`). |
 
+### Direct Financial Entries (Finance)
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `GET` | `/api/finance/direct-entries` | `FINANCE` | Lists direct financial entries for tenant. |
+| `POST` | `/api/finance/direct-entries` | `FINANCE` | Creates a new direct financial entry (supports draft and immediate GL post). |
+| `GET` | `/api/finance/direct-entries/:id` | `FINANCE` | Retrieves direct financial entry details and audit trail. |
+| `POST` | `/api/finance/direct-entries/:id/post` | `FINANCE` | Posts a draft entry to the General Ledger (`source_type = 'DIRECT_ENTRY'`). |
+| `GET` | `/api/finance/direct-entries/:id/attachment` | `FINANCE` | Downloads supporting document attachment. |
+| `POST` | `/api/finance/direct-entries/preview-ocr` | `FINANCE` | Previews OCR text and fields from uploaded attachment prior to saving. |
+
+### Reimbursements & Organization Expense Ledger
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `GET` | `/api/finance/reimbursements/expenses` | `FINANCE` | Retrieves organization-wide expenses with `claimType` and `status` filters. |
+| `GET` | `/api/finance/reimbursements/summary` | `FINANCE` | Calculates approved, paid, and outstanding reimbursement totals. |
+| `POST` | `/api/finance/reimbursements/:id/payments` | `FINANCE` | Records payment disbursement (full or partial) in payment ledger. |
+| `POST` | `/api/finance/reimbursements/:id/notify` | `FINANCE` | Dispatches simulated reimbursement notification email to employee. |
+
+### External Financial Imports
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `POST` | `/api/finance/external-imports` | `FINANCE` | Ingests external CSV file, validates columns, and generates preview. |
+| `GET` | `/api/finance/external-imports` | `FINANCE` | Lists previous external CSV imports. |
+| `GET` | `/api/finance/external-imports/:id` | `FINANCE` | Retrieves import summary and parsed rows. |
+
 ### Export & Integrations
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
@@ -561,23 +606,32 @@ ExpenseEase relies on PostgreSQL 16 managed through an idempotent SQL migration 
   - `tenants`: Multi-tenant organization records (`id`, `name`, `slug`, `status`).
   - `users`: User identities (`id`, `tenant_id`, `email`, `password_hash`, `role`, `status`).
 - **Receipts & Extractions**:
-  - `receipts`: Image metadata, storage keys, OCR statuses, raw extracted OCR text.
+  - `receipts`: Image metadata, storage keys, OCR statuses, raw extracted OCR text, `claim_type` (`REIMBURSEMENT`, `NON_REIMBURSABLE`), `org_reference`.
   - `receipt_extractions`: Structured fields (`merchant`, `date`, `amount`, `category`), dual-field provenance (`confirmed_*`), and extraction status.
-  - `receipt_line_items`: Individual itemized lines extracted from receipts.
+  - `receipt_line_items`: Individual itemized lines extracted from receipts with editable product names and quantities.
 - **Validation Engine**:
   - `tenant_policies`: Per-tenant configurable policy parameters (`max_amount`, `require_receipt`, `restricted_categories`).
   - `receipt_validation_results`: Deterministic validation outcomes and violation flags.
   - `receipt_duplicate_candidates`: Advisory duplicate similarity scores and matched candidate receipt references.
 - **Workflow & Audit**:
-  - `expense_workflows`: Current state machine statuses (`DRAFT`, `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, `CORRECTION_REQUESTED`), decision metadata, and timestamps.
-  - `workflow_audit_logs`: Append-only transition audit records with actor IDs, roles, actions, and decision reasons.
+  - `expense_workflows`: Current state machine statuses (`DRAFT`, `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, `CORRECTION_REQUESTED`, `DOCUMENTED`), decision metadata, `claim_type`, and timestamps.
+  - `workflow_audit_logs`: Append-only transition audit records with actor IDs, roles, actions (`DOCUMENT`, `SUBMIT`, `APPROVE`, `REJECT`, `REQUEST_CORRECTION`), and decision reasons.
 - **Finance Batches**:
-  - `finance_batches`: Batches grouping approved expenses (`id`, `tenant_id`, `status` (`OPEN`, `REVIEWED`), `total_amount`, `expense_count`, `reviewed_by`, `reviewed_at`).
+  - `finance_batches`: Batches grouping approved reimbursement expenses (`id`, `tenant_id`, `status` (`OPEN`, `REVIEWED`), `total_amount`, `expense_count`, `reviewed_by`, `reviewed_at`).
   - `finance_batch_items`: Join table linking batches to receipts with batch-level uniqueness constraints.
   - `finance_batch_actions`: Append-only audit trail for batch actions (`CREATE`, `ADD_ITEM`, `REMOVE_ITEM`, `REVIEW`).
+- **Direct Financial Entries**:
+  - `direct_financial_entries`: Finance external records with fields for vendor, reference#, date, amount, category, accounts, source type, reconciliation status, and document attachments.
+  - `direct_financial_entry_actions`: Immutable audit trail for direct entry actions (`CREATE`, `UPDATE`, `POST_GL`).
+- **External Financial Imports**:
+  - `external_financial_imports`: Metadata for uploaded CSV files.
+  - `external_financial_import_rows`: Parsed rows for external transactions.
+- **Reimbursement Management**:
+  - `reimbursement_payments`: Payment ledger tracking full and partial disbursements.
+  - `reimbursement_email_logs`: Delivery records for simulated reimbursement notification emails.
 - **Journal Entries & Accounting**:
-  - `account_mappings`: Tenant GL account mapping configuration (`category`, `debit_account`, `credit_account`).
-  - `journal_entries`: Accounting records (`batch_id`, `status` (`DRAFT`, `FINALIZED`), `total_debit`, `total_credit`, `line_count`, `finalized_by`).
+  - `account_mappings`: Tenant GL account mapping configuration (`category`, `debit_account`, `credit_account`), including default mapping for `Other` (`6900` / `2000`).
+  - `journal_entries`: Accounting records (`batch_id`, `status` (`DRAFT`, `FINALIZED`), `source_type` (`BATCH`, `DIRECT_ENTRY`), `total_debit`, `total_credit`, `line_count`, `finalized_by`).
   - `journal_entry_lines`: Ordered double-entry lines (`account`, `debit_amount`, `credit_amount`, `description`).
   - `journal_entry_actions`: Append-only audit trail for accounting operations (`GENERATE`, `FINALIZE`).
 - **Export Audit**:

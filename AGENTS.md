@@ -51,27 +51,28 @@ The current ExpenseEase scope includes:
 
 - Responsive PWA frontend
 - Employee expense submission
-- Receipt upload
-- Receipt capture using device camera where supported
+- Receipt upload and camera capture
 - OCR-based receipt text extraction
-- AI-assisted receipt understanding
-- Structured receipt-field extraction
+- AI-assisted receipt understanding and structured field extraction
+- Employee post-OCR line item and quantity editing with dual-field provenance
 - AI-assisted expense categorization
 - Similarity-based duplicate detection
 - Deterministic policy validation
 - Employee / Manager / Finance workflow
 - Manager approval, rejection, and correction requests
-- Multi-tenancy
+- Non-reimbursable purchase-bill documentation for Employees and Managers (DOCUMENTED state)
+- Multi-tenancy with PostgreSQL Row-Level Security (RLS)
 - Role-Based Access Control (RBAC)
-- PostgreSQL Row-Level Security (RLS)
-- Auditability
-- Finance Batches
-- Finance review
-- Accounting-style Journal Entry generation
-- Deterministic account mapping
-- Balanced journal-entry validation
-- CSV export
-- QuickBooks/Xero integration points
+- Organization Expense Ledger with claim-type and status filtering
+- Finance Batches for approved employee reimbursements
+- Direct Financial Entries for Finance (independent of employee/manager flows)
+- External financial data imports (CSV) with preview and duplicate detection
+- Finance reimbursement notification emails (with mock mode) and payment ledger
+- Accounting-style Journal Entry generation from Batches and Direct Entries
+- Deterministic account mapping (including default 'Other' mapping and missing mapping configuration)
+- Balanced journal-entry validation (Debits === Credits)
+- CSV export and QuickBooks/Xero integration points
+- Auditability across all state transitions, batches, entries, and exports
 - Docker/Docker Compose
 - Git/GitHub
 - Automated and manual testing
@@ -270,40 +271,79 @@ Make small, meaningful commits.
 
 # 6. CORE EXPENSE WORKFLOW
 
-The intended end-to-end workflow is:
+The ExpenseEase platform supports four logically consistent and isolated workflows:
 
+### A. Employee Reimbursement Workflow
 Employee
     ↓
-Receipt Capture
+Receipt Capture / Upload
     ↓
-Receipt Upload
+OCR Text Extraction
     ↓
-OCR
+AI Understanding & Categorization
     ↓
-AI Understanding
+Employee Review & Confirmation (editable line items & quantities)
     ↓
-Employee Confirmation
+Deterministic Policy Validation & Duplicate Detection
     ↓
-Policy Validation
+Workflow Submission (DRAFT → PENDING_APPROVAL)
     ↓
-Duplicate / Similarity Check
+Manager Review (Approve / Reject / Request Correction)
     ↓
-Manager Review
+Finance Batch (aggregates APPROVED reimbursement claims)
     ↓
-Approve / Reject / Request Correction
+Finance Review (OPEN → REVIEWED)
     ↓
-Finance Batch
+Journal Entry Generation (source_type = 'BATCH')
     ↓
-Finance Review
+Balance Validation (Debits === Credits)
     ↓
-Journal Entry Generation
+Finance Finalization & CSV / QuickBooks / Xero Export
     ↓
-Balance Validation
-    ↓
-CSV Export / QuickBooks / Xero
+Reimbursement Notification & Payment Tracking
 
-This workflow must remain logically consistent throughout the implementation.
+### B. Non-Reimbursable Bill Documentation Workflow
+Employee or Manager
+    ↓
+Upload Bill for Recordkeeping ("No Reimbursement Required")
+    ↓
+Capture/Confirm Vendor, Date, Amount, Currency, Org Reference
+    ↓
+System assigns claim_type = 'NON_REIMBURSABLE' & current_state = 'DOCUMENTED'
+    ↓
+Audit Action 'DOCUMENT' recorded; manager approval queue is bypassed
+    ↓
+Strictly excluded from reimbursement calculations, emails, payments, and Finance Batches
+    ↓
+Discoverable by Finance in Organization Expense Ledger for audit and accounting review
 
+### C. Direct Financial Entry Workflow (Finance)
+Finance User
+    ↓
+Manual Entry (Vendor, Date, Amount, Reference#, Source Type, Category, Accounts)
+    ↓
+Optional Attachment with OCR Review Preview
+    ↓
+Save as DRAFT or Review for GL Posting
+    ↓
+Deterministic Debit/Credit Balance Validation
+    ↓
+Post to General Ledger (source_type = 'DIRECT_ENTRY')
+    ↓
+Audit Action recorded in direct_financial_entry_actions (no employee claim created)
+
+### D. External Financial Import Workflow (Finance)
+Finance User
+    ↓
+CSV Upload (Bank, Card, Supplier records)
+    ↓
+File Validation, Schema Check, and Duplicate Detection
+    ↓
+Finance Review & Preview
+    ↓
+General Ledger Preparation and Reconciliation
+
+These workflows must remain logically consistent and strictly isolated.
 Do not remove or bypass major stages without explicit approval.
 
 ---
@@ -495,33 +535,37 @@ The current business roles are:
 Can:
 
 - Create expenses
-- Upload receipts
+- Upload receipts and capture via camera
 - View own expenses
-- Confirm extracted information
+- Confirm extracted information and edit line item names/quantities
 - Correct returned expenses
-- Submit expenses
+- Submit expenses for reimbursement
+- Upload purchase bills for recordkeeping without reimbursement (`NON_REIMBURSABLE`)
 
 ## MANAGER
 
 Can:
 
-- Review submitted expenses
-- View supporting receipts
-- Review extracted information
+- Review submitted expenses for department/team
+- View supporting receipts and extracted information
 - Approve expenses
 - Reject expenses
 - Request corrections
+- Upload purchase bills for recordkeeping without reimbursement (`NON_REIMBURSABLE`)
 
 ## FINANCE
 
 Can:
 
-- Review approved expenses
-- Create/review Finance Batches
-- Review finance records
-- Generate Journal Entries
-- Export accounting data
-- Use approved accounting integrations
+- Review approved reimbursement expenses
+- Create, manage, and review Finance Batches
+- Create Direct Financial Entries (independent of employee/manager flows)
+- Ingest and preview External Financial Imports (CSV)
+- Inspect organization-wide expenses in the Organization Expense Ledger with claim-type filters
+- Generate and finalize double-entry Journal Entries (from Batches and Direct Entries)
+- Track reimbursement payments (including partial payments) and send employee notification emails
+- Configure GL account mappings (including custom and 'Other' categories)
+- Export accounting data (RFC 4180 CSV, QuickBooks, Xero)
 
 Authorization must be enforced on the backend.
 
@@ -551,6 +595,8 @@ A Finance Batch must NOT contain:
 
 - Rejected expenses
 - Unapproved expenses
+- Non-reimbursable purchase bills (`claim_type = 'NON_REIMBURSABLE'`)
+- Direct financial entries (which post directly to GL)
 - Expenses belonging to another tenant
 - The same expense multiple times unless explicitly supported by a defined business rule
 
@@ -574,6 +620,15 @@ Accounting Account
         ↓
 Journal Entry Line
 
+Journal entries can originate from:
+1. Reviewed Finance Batches (`source_type = 'BATCH'`)
+2. Finance Direct Financial Entries (`source_type = 'DIRECT_ENTRY'`)
+3. External Financial Imports
+
+The standard default mapping for `Other` category is:
+- Debit Account: `6900 - Miscellaneous / Other Expense`
+- Credit Account: `2000 - Accounts Payable`
+
 The LLM MUST NOT invent accounting accounts.
 
 The LLM MUST NOT decide debit/credit balances.
@@ -588,7 +643,7 @@ TOTAL DEBITS != TOTAL CREDITS
 
 the journal entry MUST NOT be finalized.
 
-Missing account mappings must result in an explicit error or review state.
+Missing account mappings must result in an explicit error or prompt for Finance configuration. Unmapped categories must never be silently assigned to arbitrary accounts.
 
 Journal entries should be reviewable before finalization/export where required by the workflow.
 
@@ -757,20 +812,31 @@ Database design should maintain:
 - Auditability
 - Data consistency
 
-Potential core entities include:
+Core entities include:
 
 - tenants
 - users
 - roles
-- expenses
-- receipts
+- expenses / receipts (with `claim_type`, `org_reference`)
+- receipt_extractions (with dual-field provenance)
+- receipt_line_items (with editable item names and quantities)
 - policies
-- approvals
-- audit_logs
+- approvals / expense_workflows (states including `DOCUMENTED`)
+- audit_logs / workflow_audit_logs
 - finance_batches
-- journal_entries
+- finance_batch_items
+- finance_batch_actions
+- journal_entries (source types: `BATCH`, `DIRECT_ENTRY`)
 - journal_entry_lines
-- account_mappings
+- journal_entry_actions
+- account_mappings (including default `Other` mapping)
+- direct_financial_entries
+- direct_financial_entry_actions
+- external_financial_imports
+- external_financial_import_rows
+- reimbursement_payments
+- reimbursement_email_logs
+- export_audit_logs
 
 Do not create large numbers of unnecessary tables.
 
@@ -892,9 +958,38 @@ At minimum, test:
 
 - Balanced entry
 - Unbalanced entry
-- Missing mapping
-- Duplicate generation
+- Missing mapping safe failure
+- Dynamic account mapping configuration
+- 'Other' category journal entry generation
+- Direct financial entry GL posting
+- Duplicate generation prevention
 - Multiple expense categories
+
+## Direct Financial Entries
+
+- Finance manual entry creation and validation
+- Draft state persistence and editing
+- GL posting and balanced line generation
+- Attachment storage and OCR preview
+- Deduplication by tenant, vendor, and reference number
+- Audit trail recording
+- Strict FINANCE-only RBAC and tenant isolation
+
+## Non-Reimbursable Bill Documentation
+
+- Employee and Manager upload without reimbursement
+- State assignment to DOCUMENTED with DOCUMENT audit action
+- Strict exclusion from reimbursement totals, payments, and emails
+- Exclusion from Finance reimbursement batches
+- Discovery and filtering in Organization Expense Ledger
+- Tenant isolation and file validation
+
+## Finance Reimbursements & External Imports
+
+- Organization Expense Ledger multi-criteria filtering
+- Payment ledger tracking (partial and full payments)
+- Employee reimbursement notification emails (mock mode with logs)
+- External CSV financial import validation, preview, and deduplication
 
 ## Export
 
